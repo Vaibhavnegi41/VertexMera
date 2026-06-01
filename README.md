@@ -113,14 +113,6 @@ streamlit run app.py
 
 ---
 
-## ☁️ Deployment
-
-Deployed on **Streamlit Cloud** — secrets managed via the dashboard.
-
-[![Deploy on Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io)
-
----
-
 ## 👨‍💻 Author
 
 **Vaibhav Negi**
