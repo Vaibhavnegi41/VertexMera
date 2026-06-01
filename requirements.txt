@@ -16,3 +16,5 @@ sentence-transformers
 pinecone-client
 pypdf
 langchain-community
+langchain-groq
+langchain-core
