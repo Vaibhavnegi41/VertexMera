@@ -14,7 +14,7 @@
 
 **VertexMera** is a production-ready **Corrective RAG (CRAG)** system that goes beyond standard retrieval-augmented generation. Instead of blindly trusting retrieved documents, it **grades their relevance** — and if they fall short, it **automatically falls back to live web search** before generating an answer.
 
-> Built as part of a final-year academic project with a real-world deployment on Streamlit Cloud.
+> Because blindly trusting Google results is so 2020 — VertexMera actually reads, judges, and fact-checks before it answers.
 
 ---
 
