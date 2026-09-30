@@ -43,13 +43,17 @@ if GROQ_API_KEY:
     os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
 model = ChatGroq(
-    model="qwen/qwen3.8-27b",
-    api_key=GROQ_API_KEY
+    model="openai/gpt-oss-120b",
+    api_key=GROQ_API_KEY,
+    temperature=0.2,
+    max_tokens=1024
 )
 
 grading_model = ChatGroq(
-    model="qwen/qwen3.8-27b",
-    api_key=GROQ_API_KEY
+    model="openai/gpt-oss-120b",
+    api_key=GROQ_API_KEY,
+    temperature=0,
+    max_tokens=300
 )
 
 embedding_model = HuggingFaceEmbeddings(

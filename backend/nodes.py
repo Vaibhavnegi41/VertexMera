@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from langchain_core.documents import Document
 
 from backend.state import State
-from backend.config import model, retriever, web_search_tool
+from backend.config import model, grading_model, retriever, web_search_tool
 from backend.prompts import scoring_prompt, rag_prompt, web_prompt
 
 
@@ -11,7 +11,7 @@ class ScoreFormat(BaseModel):
     score: bool
 
 
-score_model = model.with_structured_output(ScoreFormat)
+score_model = grading_model.with_structured_output(ScoreFormat)
 
 
 def retrieve(state: State):
