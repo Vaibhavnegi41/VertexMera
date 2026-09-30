@@ -15,10 +15,21 @@ from langchain_tavily import TavilySearch
 
 load_dotenv()
 
+# ── Sync Streamlit Cloud Secrets into os.environ ─────────────────────────
+try:
+    import streamlit as st
+    if hasattr(st, "secrets"):
+        for k, v in st.secrets.items():
+            if isinstance(v, str):
+                os.environ[k] = v
+except Exception:
+    pass
+
 # ── Environment variables ────────────────────────────────────────────────
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = os.getenv("INDEX_NAME")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 # ── LLMs ─────────────────────────────────────────────────────────────────
 model = ChatGroq(

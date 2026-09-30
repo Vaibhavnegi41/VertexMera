@@ -21,9 +21,19 @@ st.set_page_config(
 
 load_dotenv()
 
+# ── Sync Streamlit Secrets into os.environ for backend modules ───────────
+try:
+    if hasattr(st, "secrets"):
+        for k, v in st.secrets.items():
+            if isinstance(v, str):
+                os.environ[k] = v
+except Exception:
+    pass
+
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = os.getenv("INDEX_NAME")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "backend"))
 
