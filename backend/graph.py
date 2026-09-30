@@ -14,13 +14,13 @@ def build_graph():
     """Build and compile the Corrective-RAG state graph."""
     graph = StateGraph(State)
 
-    # ── Nodes ────────────────────────────────────────────────
+    # ── Nodes ─
     graph.add_node("retrieve", retrieve)
     graph.add_node("grading", grade_documents)
     graph.add_node("web_search", web_search)
     graph.add_node("generate", generate_node)
 
-    # ── Edges ────────────────────────────────────────────────
+    # ── Edges 
     graph.add_edge(START, "retrieve")
     graph.add_edge("retrieve", "grading")
     graph.add_conditional_edges("grading", route_decision, {
@@ -32,6 +32,4 @@ def build_graph():
 
     return graph.compile()
 
-
-# Pre-built chatbot instance for easy import
 chatbot = build_graph()

@@ -21,19 +21,37 @@ st.set_page_config(
 
 load_dotenv()
 
-# ── Sync Streamlit Secrets into os.environ for backend modules ───────────
-try:
-    if hasattr(st, "secrets"):
-        for k, v in st.secrets.items():
-            if isinstance(v, str):
-                os.environ[k] = v
-except Exception:
-    pass
+def get_secret(key: str, default: str = "") -> str:
+    """Read a config value from os.environ first, then streamlit.secrets (including nested sections)."""
+    val = os.getenv(key)
+    if val:
+        return str(val).strip()
+    try:
+        if hasattr(st, "secrets"):
+            if key in st.secrets:
+                v = str(st.secrets[key]).strip()
+                os.environ[key] = v
+                return v
+            for section in st.secrets.values():
+                if isinstance(section, dict) and key in section:
+                    v = str(section[key]).strip()
+                    os.environ[key] = v
+                    return v
+    except Exception:
+        pass
+    return default
 
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = os.getenv("INDEX_NAME")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+PINECONE_API_KEY = get_secret("PINECONE_API_KEY")
+INDEX_NAME = get_secret("INDEX_NAME", "vertex-mera-index")
+GROQ_API_KEY = get_secret("GROQ_API_KEY")
+TAVILY_API_KEY = get_secret("TAVILY_API_KEY")
+
+if PINECONE_API_KEY:
+    os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
+if TAVILY_API_KEY:
+    os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY
+if GROQ_API_KEY:
+    os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "backend"))
 

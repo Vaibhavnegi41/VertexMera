@@ -29,7 +29,7 @@ scoring_prompt = ChatPromptTemplate.from_messages([
     )
 ])
 
-# ── RAG generation prompt ────────────────────────────────────────────────
+
 rag_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -59,7 +59,6 @@ rag_prompt = ChatPromptTemplate.from_messages([
     )
 ])
 
-# ── Web-search generation prompt ─────────────────────────────────────────
 web_prompt = ChatPromptTemplate.from_messages([
     (
         "system",

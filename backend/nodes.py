@@ -7,7 +7,6 @@ from backend.config import model, retriever, web_search_tool
 from backend.prompts import scoring_prompt, rag_prompt, web_prompt
 
 
-# ── Structured output schema for grading ─────────────────────────────────
 class ScoreFormat(BaseModel):
     score: bool
 
@@ -15,7 +14,6 @@ class ScoreFormat(BaseModel):
 score_model = model.with_structured_output(ScoreFormat)
 
 
-# ── Node: Retrieve ───────────────────────────────────────────────────────
 def retrieve(state: State):
     """Query the Pinecone vector store for relevant documents."""
     question = state["question"]
@@ -30,10 +28,7 @@ def retrieve(state: State):
     }
 
 
-# ── Node: Grade documents ───────────────────────────────────────────────
 def grade_documents(state: State):
-    """Score each retrieved document for relevance; flag for web search
-    if nothing passes."""
     question = state["question"]
     documents = state["documents"]
 
@@ -66,9 +61,7 @@ def grade_documents(state: State):
     }
 
 
-# ── Node: Generate answer ───────────────────────────────────────────────
 def generate_node(state: State):
-    """Generate the final answer using RAG or web-search prompt."""
     question = state["question"]
     documents = state["documents"]
     steps = state["steps"]
@@ -76,7 +69,6 @@ def generate_node(state: State):
 
     context_str = "\n\n".join([doc.page_content for doc in documents])
 
-    # Use a different prompt depending on where the documents came from
     prompt = web_prompt if state.get("web_searched") else rag_prompt
 
     generation = model.invoke(
@@ -92,9 +84,7 @@ def generate_node(state: State):
     }
 
 
-# ── Node: Web search fallback ───────────────────────────────────────────
 def web_search(state: State):
-    """Fall back to Tavily web search when no relevant documents are found."""
     question = state["question"]
     steps = state["steps"]
     steps.append("web_search_node")
@@ -110,7 +100,7 @@ def web_search(state: State):
             if content:
                 web_docs.append(Document(page_content=content))
 
-    # Fallback: older Tavily dict format
+
     elif isinstance(web_response, dict):
         for result in web_response.get("results", []):
             content = result.get("content", "")
@@ -126,7 +116,6 @@ def web_search(state: State):
     }
 
 
-# ── Conditional edge: route after grading ────────────────────────────────
 def route_decision(state: State) -> Literal["web_search", "generate"]:
     """Decide whether to fall back to web search or go straight to generation."""
     if state["search"]:
