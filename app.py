@@ -63,13 +63,15 @@ def get_embedding_model():
 
 @st.cache_resource(show_spinner="Compiling CRAG pipeline...")
 def load_chatbot():
+    from backend.pii_guardrails import get_guardrails
+    get_guardrails().mask("warmup")
     from backend.main import chatbot
     return chatbot
 
 embedding_model = get_embedding_model()
 chatbot = load_chatbot()
 
-# ── SESSION STATE INIT ────────────────────────────────────
+# Session state initialization
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "suggested_questions" not in st.session_state:
@@ -77,7 +79,6 @@ if "suggested_questions" not in st.session_state:
 if "latest_docs" not in st.session_state:
     st.session_state.latest_docs = []
 
-# ── HELPER: FORMAT MARKDOWN TO CLEAN HTML ─────────────────
 def format_markdown_to_html(text: str) -> str:
     """Converts markdown asterisks, code blocks, lists, and formatting into clean HTML."""
     if not text:
@@ -137,7 +138,7 @@ def format_markdown_to_html(text: str) -> str:
     return res
 
 
-# ── STYLES ────────────────────────────────────────────────
+# CSS Styling
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap');
@@ -382,6 +383,7 @@ st.markdown("""
     .step-card:hover {
         transform: translateX(4px);
     }
+    .step-card.guardrail { border-left-color: #38bdf8; }
     .step-card.retrieve  { border-left-color: #ff4500; }
     .step-card.grade     { border-left-color: #ff8c00; }
     .step-card.search    { border-left-color: #ffd700; }
@@ -549,7 +551,7 @@ def inject_localstorage_sync():
     """, height=0)
 
 
-# ── SIDEBAR ──────────────────────────────────────────────
+# Sidebar
 with st.sidebar:
     st.markdown("### 🔥 Knowledge Base")
     st.markdown("Upload a PDF to embed it into Pinecone.")
@@ -566,6 +568,10 @@ with st.sidebar:
                     loader = PyPDFLoader(tmp_path)
                     docs = loader.load()
 
+                    from backend.pii_guardrails import mask_documents
+                    with st.spinner("🛡️ Applying Hybrid PII Guardrails (Masking & Redaction)..."):
+                        docs = mask_documents(docs)
+
                     splitter = RecursiveCharacterTextSplitter(
                         chunk_size=1000,
                         chunk_overlap=200
@@ -579,7 +585,7 @@ with st.sidebar:
                     )
 
                     os.unlink(tmp_path)
-                    st.success(f"✅ {len(chunks)} chunks embedded.")
+                    st.success(f"✅ {len(chunks)} PII-redacted chunks embedded securely.")
 
                     # Generate suggested questions from the PDF
                     with st.spinner("Generating suggested questions..."):
@@ -609,20 +615,8 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
 
-    # ── SIDEBAR CHUNKS PANEL ──
-    st.markdown("---")
-    st.markdown("### 📑 Retrieved Context Chunks")
-    
-    current_docs = st.session_state.get("latest_docs", [])
-    if current_docs:
-        st.markdown(f"<div style='color:#ffd700;font-size:0.78rem;margin-bottom:8px'>Showing {len(current_docs)} chunk(s) from latest query:</div>", unsafe_allow_html=True)
-        for idx, doc_text in enumerate(current_docs):
-            with st.expander(f"Chunk #{idx+1} ({len(doc_text)} chars)", expanded=(idx == 0)):
-                st.markdown(f"<div style='color:#cbd5e1;font-size:0.8rem;line-height:1.5;white-space:pre-wrap;'>{doc_text}</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div style='color:#4b5563;font-size:0.8rem;font-style:italic;'>No chunks retrieved yet. Ask a question to see relevant chunks here.</div>", unsafe_allow_html=True)
 
-    # ── Chat history controls ──
+    # Chat history controls
     st.markdown("---")
     st.markdown("### 💬 Chat History")
     msg_count = len(st.session_state.messages) // 2
@@ -649,7 +643,7 @@ with st.sidebar:
     )
 
 
-# ── HERO ─────────────────────────────────────────────────
+# Hero Header
 st.markdown("""
 <div class="hero-wrap">
     <div class="hero-badge">Corrective RAG · v1.0</div>
@@ -660,7 +654,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── SUGGESTED QUESTIONS ──────────────────────────────────
+# Suggested Questions
 if st.session_state.suggested_questions and len(st.session_state.messages) == 0:
     st.markdown('<div class="section-label">Suggested questions from your document</div>', unsafe_allow_html=True)
     cols = st.columns(2)
@@ -671,7 +665,7 @@ if st.session_state.suggested_questions and len(st.session_state.messages) == 0:
                 st.rerun()
 
 
-# ── CHAT DISPLAY (NO INNER SCROLLBAR - PAGE EXPANDS NATURALLY) ──
+# Chat Display
 if st.session_state.messages:
     st.markdown('<div class="section-label">Conversation</div>', unsafe_allow_html=True)
 
@@ -716,7 +710,7 @@ if st.session_state.messages:
     st.markdown(chat_html, unsafe_allow_html=True)
 
 
-# ── INPUT ─────────────────────────────────────────────────
+# Query Input
 pending = st.session_state.pop("_pending_question", None)
 
 query = st.text_input(
@@ -731,7 +725,7 @@ if pending and not submit:
     submit = True
 
 
-# ── PIPELINE EXECUTION ────────────────────────────────────
+# Pipeline Execution
 if submit and query:
     st.session_state.messages.append({
         "role": "user",
@@ -747,7 +741,9 @@ if submit and query:
                 'documents': [],
                 'steps': [],
                 'generation': '',
-                'web_searched': False
+                'web_searched': False,
+                'pii_map': {},
+                'pii_redacted': False
             })
 
             elapsed = round(time.time() - start_time, 2)
@@ -791,7 +787,7 @@ elif submit and not query:
     st.warning("Please enter a question first.")
 
 
-# ── LATEST RESULT DETAILS (TRACE & RELEVANT CHUNKS) ────────
+# Latest Result Details
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]
 
@@ -801,10 +797,12 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
 
         steps_html = ""
         step_meta = {
-            "retrieval": ("🔴", "retrieve",  "Queried Pinecone vector store"),
-            "grade":     ("🟠", "grade",     "Scored document relevance"),
-            "search":    ("🟡", "search",    "Fell back to Tavily web search"),
-            "generation":("🟢", "generate",  "Generated final answer"),
+            "guardrail":  ("🛡️", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "pii":        ("🛡️", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "retrieval":  ("🔴", "retrieve",  "Queried Pinecone vector store"),
+            "grade":      ("🟠", "grade",     "Scored document relevance"),
+            "search":     ("🟡", "search",    "Fell back to Tavily web search"),
+            "generation": ("🟢", "generate",  "Generated final answer"),
         }
 
         for i, step in enumerate(last_msg["steps"]):
@@ -842,7 +840,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
 
 inject_localstorage_sync()
 
-# ── FOOTER ────────────────────────────────────────────────
+# Footer
 st.markdown("""
 <div class="footer">
     Powered by <span>LangGraph</span> · <span>Pinecone</span> · <span>Tavily</span> · <span>Streamlit</span>

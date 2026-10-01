@@ -1,4 +1,4 @@
-from typing import TypedDict, List
+from typing import TypedDict, List, Dict
 from langchain_core.documents import Document
 
 
@@ -9,3 +9,5 @@ class State(TypedDict):
     search: bool
     web_searched: bool
     steps: List[str]
+    pii_map: Dict[str, str]
+    pii_redacted: bool

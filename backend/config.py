@@ -14,12 +14,10 @@ def get_secret(key: str, default: str = "") -> str:
         return str(val).strip()
     try:
         import streamlit as st
-        # 1. Direct key
         if key in st.secrets:
             v = str(st.secrets[key]).strip()
             os.environ[key] = v
             return v
-        # 2. Check nested sections like [general] or [secrets]
         for section in st.secrets.values():
             if isinstance(section, dict) and key in section:
                 v = str(section[key]).strip()
@@ -69,6 +67,5 @@ retriever = vector_store.as_retriever(
     search_type="similarity",
     search_kwargs={"k": 4}
 )
-
 
 web_search_tool = TavilySearch(max_results=2)

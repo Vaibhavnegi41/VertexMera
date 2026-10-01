@@ -7,8 +7,11 @@ if __name__ == "__main__":
         "documents": [],
         "steps": [],
         "generation": "",
-        "web_searched": False
+        "web_searched": False,
+        "pii_map": {},
+        "pii_redacted": False
     })
 
-    print(results["generation"])
-    print(results["steps"])
+    print("Generation:\n", results["generation"])
+    print("\nSteps:\n", results["steps"])
+    print("\nPII Redacted:", results.get("pii_redacted", False))
