@@ -11,10 +11,11 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_pinecone.vectorstores import Pinecone as LangchainPinecone
+from langchain_core.documents import Document
 
 st.set_page_config(
     page_title="VertexMera — CRAG AI",
-    page_icon="🔥",
+    page_icon=None,
     layout="centered",
     initial_sidebar_state="expanded"
 )
@@ -91,16 +92,16 @@ def format_markdown_to_html(text: str) -> str:
     def replace_code_block(match):
         code = match.group(2)
         return (
-            f'<pre style="background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.1);'
+            f'<pre style="background:rgba(20,20,22,0.9);border:1px solid rgba(255,255,255,0.12);'
             f'padding:10px 14px;border-radius:8px;overflow-x:auto;font-family:monospace;'
-            f'font-size:0.85rem;color:#f0ece4;margin:8px 0;"><code>{code}</code></pre>'
+            f'font-size:0.85rem;color:#f4f4f5;margin:8px 0;"><code>{code}</code></pre>'
         )
     safe = re.sub(r'```([a-zA-Z0-9_-]*)\n?(.*?)```', replace_code_block, safe, flags=re.DOTALL)
     
     # 3. Inline code `...`
     safe = re.sub(
         r'`([^`]+)`',
-        r'<code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.88em;color:#ffd700;">\1</code>',
+        r'<code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.88em;color:#ffffff;">\1</code>',
         safe
     )
     
@@ -148,21 +149,21 @@ st.markdown("""
     }
 
     .stApp {
-        background: #0a0a0a;
-        color: #f0ece4;
+        background: #050505;
+        color: #f4f4f5;
     }
 
-    /* Animated fire mesh background */
+    /* Ambient monochrome gradient mesh background */
     .stApp::before {
         content: '';
         position: fixed;
         top: 0; left: 0;
         width: 100%; height: 100%;
         background:
-            radial-gradient(ellipse 80% 60% at 20% 10%, rgba(220, 60, 20, 0.18) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 50% at 80% 5%,  rgba(255, 140, 0, 0.14) 0%, transparent 55%),
-            radial-gradient(ellipse 50% 40% at 50% 90%, rgba(34, 197, 94, 0.10) 0%, transparent 55%),
-            radial-gradient(ellipse 70% 40% at 10% 80%, rgba(250, 204, 21, 0.08) 0%, transparent 50%);
+            radial-gradient(ellipse 80% 60% at 20% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 50% at 80% 5%,  rgba(200, 200, 200, 0.03) 0%, transparent 55%),
+            radial-gradient(ellipse 50% 40% at 50% 90%, rgba(255, 255, 255, 0.03) 0%, transparent 55%),
+            radial-gradient(ellipse 70% 40% at 10% 80%, rgba(180, 180, 180, 0.02) 0%, transparent 50%);
         pointer-events: none;
         z-index: 0;
     }
@@ -176,9 +177,9 @@ st.markdown("""
 
     .hero-badge {
         display: inline-block;
-        background: linear-gradient(90deg, rgba(220,60,20,0.2), rgba(255,140,0,0.2));
-        border: 1px solid rgba(255,140,0,0.35);
-        color: #fbbf24;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #e4e4e7;
         font-size: 0.72rem;
         font-weight: 600;
         letter-spacing: 0.16em;
@@ -193,7 +194,7 @@ st.markdown("""
         font-size: clamp(2.2rem, 6vw, 3.8rem);
         font-weight: 800;
         line-height: 1.05;
-        background: linear-gradient(135deg, #ff4500 0%, #ff8c00 35%, #ffd700 65%, #22c55e 100%);
+        background: linear-gradient(135deg, #ffffff 0%, #e4e4e7 35%, #a1a1aa 70%, #71717a 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -202,7 +203,7 @@ st.markdown("""
     }
 
     .hero-sub {
-        color: #9ca3a0;
+        color: #a1a1aa;
         font-size: clamp(0.9rem, 2.2vw, 1.02rem);
         font-weight: 400;
         margin: 0;
@@ -212,35 +213,35 @@ st.markdown("""
     /* ── DIVIDER ── */
     .flame-divider {
         width: 60px;
-        height: 3px;
-        background: linear-gradient(90deg, #ff4500, #ffd700, #22c55e);
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
         border-radius: 2px;
         margin: 0.8rem auto 1.2rem;
     }
 
     /* ── INPUT ── */
     .stTextInput > div > div > input {
-        background: rgba(18, 18, 18, 0.9) !important;
-        border: 1.5px solid rgba(255, 140, 0, 0.35) !important;
+        background: rgba(18, 18, 20, 0.95) !important;
+        border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
         border-radius: 12px !important;
-        color: #f0ece4 !important;
+        color: #ffffff !important;
         font-family: 'Space Grotesk', sans-serif !important;
         font-size: 1rem !important;
         padding: 13px 18px !important;
         transition: border-color 0.25s, box-shadow 0.25s !important;
     }
     .stTextInput > div > div > input:focus {
-        border-color: #ff8c00 !important;
-        box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.18) !important;
+        border-color: #ffffff !important;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12) !important;
     }
     .stTextInput > div > div > input::placeholder {
-        color: #555e6d !important;
+        color: #71717a !important;
     }
 
     /* ── BUTTON ── */
     .stButton > button {
-        background: linear-gradient(135deg, #dc3c14 0%, #ff6b00 50%, #ffd700 100%) !important;
-        color: #0a0a0a !important;
+        background: linear-gradient(135deg, #ffffff 0%, #e4e4e7 50%, #d4d4d8 100%) !important;
+        color: #09090b !important;
         border: none !important;
         border-radius: 12px !important;
         padding: 0.7rem 2rem !important;
@@ -250,15 +251,61 @@ st.markdown("""
         letter-spacing: 0.03em !important;
         width: 100% !important;
         transition: all 0.25s ease !important;
-        box-shadow: 0 4px 20px rgba(220, 60, 20, 0.35) !important;
+        box-shadow: 0 4px 18px rgba(255, 255, 255, 0.12) !important;
     }
     .stButton > button:hover {
         transform: translateY(-2px) !important;
-        box-shadow: 0 8px 28px rgba(255, 140, 0, 0.45) !important;
-        filter: brightness(1.08) !important;
+        box-shadow: 0 8px 24px rgba(255, 255, 255, 0.25) !important;
+        filter: brightness(1.05) !important;
     }
     .stButton > button:active {
         transform: translateY(0) !important;
+    }
+
+    /* ── HITL ACTION (MATCHED WITH MONOCHROME ASSISTANT BUBBLE) ── */
+    .hitl-sub-banner {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 0.84rem;
+        color: #a1a1aa;
+    }
+    .hitl-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 0.72rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+    }
+    .hitl-btn-wrap {
+        max-width: 90%;
+        margin: 4px 0 16px 0;
+    }
+    .hitl-btn-wrap .stButton > button {
+        background: rgba(24, 24, 27, 0.95) !important;
+        color: #ffffff !important;
+        border: 1.5px solid rgba(255, 255, 255, 0.3) !important;
+        border-radius: 10px !important;
+        padding: 0.55rem 1.4rem !important;
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.02em !important;
+        width: auto !important;
+        box-shadow: 0 2px 12px rgba(255, 255, 255, 0.08) !important;
+        transition: all 0.2s ease !important;
+    }
+    .hitl-btn-wrap .stButton > button:hover {
+        background: #ffffff !important;
+        border-color: #ffffff !important;
+        color: #09090b !important;
+        box-shadow: 0 4px 18px rgba(255, 255, 255, 0.25) !important;
+        transform: translateY(-1.5px) !important;
     }
 
     /* ── SECTION LABELS ── */
@@ -268,7 +315,7 @@ st.markdown("""
         font-weight: 700;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: #ff8c00;
+        color: #e4e4e7;
         margin: 1.5rem 0 0.8rem;
         display: flex;
         align-items: center;
@@ -278,10 +325,10 @@ st.markdown("""
         content: '';
         flex: 1;
         height: 1px;
-        background: linear-gradient(90deg, rgba(255,140,0,0.3), transparent);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.25), transparent);
     }
 
-    /* ── CHAT CONTAINER (NO INNER SCROLLBAR - PAGE EXPANDS NATURALLY) ── */
+    /* ── CHAT CONTAINER ── */
     .chat-container {
         display: flex;
         flex-direction: column;
@@ -319,9 +366,9 @@ st.markdown("""
     }
 
     .chat-bubble.user {
-        background: linear-gradient(135deg, rgba(220,60,20,0.22), rgba(255,140,0,0.18));
-        border: 1px solid rgba(255,140,0,0.35);
-        color: #fde047;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #f4f4f5;
         padding: 12px 18px;
         border-bottom-right-radius: 4px;
         max-width: 80%;
@@ -330,10 +377,10 @@ st.markdown("""
     }
 
     .chat-bubble.assistant {
-        background: rgba(15, 17, 16, 0.92);
-        border: 1px solid rgba(34, 197, 94, 0.22);
-        border-left: 3.5px solid #22c55e;
-        color: #e2e8f0;
+        background: rgba(18, 18, 20, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-left: 3.5px solid #ffffff;
+        color: #e4e4e7;
         padding: 14px 20px;
         border-bottom-left-radius: 4px;
         max-width: 90%;
@@ -350,8 +397,8 @@ st.markdown("""
         align-items: center;
         gap: 6px;
     }
-    .chat-role.user-role { color: #ff8c00; }
-    .chat-role.ai-role   { color: #22c55e; }
+    .chat-role.user-role { color: #a1a1aa; }
+    .chat-role.ai-role   { color: #ffffff; }
 
     .chat-content-body {
         font-size: 0.94rem;
@@ -360,7 +407,7 @@ st.markdown("""
 
     .chat-meta {
         font-size: 0.72rem;
-        color: #6b7280;
+        color: #71717a;
         margin-top: 8px;
         padding-top: 6px;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -368,9 +415,9 @@ st.markdown("""
 
     /* ── STEP CARDS ── */
     .step-card {
-        background: rgba(16, 16, 16, 0.85);
-        border: 1px solid rgba(255, 140, 0, 0.15);
-        border-left: 3px solid;
+        background: rgba(18, 18, 20, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-left: 3px solid #ffffff;
         padding: 12px 16px;
         border-radius: 10px;
         margin-bottom: 8px;
@@ -382,17 +429,24 @@ st.markdown("""
     }
     .step-card:hover {
         transform: translateX(4px);
+        border-color: rgba(255, 255, 255, 0.3);
     }
-    .step-card.guardrail { border-left-color: #38bdf8; }
-    .step-card.retrieve  { border-left-color: #ff4500; }
-    .step-card.grade     { border-left-color: #ff8c00; }
-    .step-card.search    { border-left-color: #ffd700; }
-    .step-card.generate  { border-left-color: #22c55e; }
-    .step-card.default   { border-left-color: #6b7280; }
+    .step-card.guardrail { border-left-color: #d4d4d8; }
+    .step-card.retrieve  { border-left-color: #ffffff; }
+    .step-card.grade     { border-left-color: #a1a1aa; }
+    .step-card.search    { border-left-color: #e4e4e7; }
+    .step-card.generate  { border-left-color: #ffffff; }
+    .step-card.default   { border-left-color: #71717a; }
 
     .step-icon {
-        font-size: 1.2rem;
-        line-height: 1;
+        font-size: 0.85rem;
+        font-weight: 700;
+        font-family: monospace;
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        line-height: 1.2;
         flex-shrink: 0;
         margin-top: 1px;
     }
@@ -400,12 +454,12 @@ st.markdown("""
     .step-title {
         font-weight: 600;
         font-size: 0.92rem;
-        color: #f0ece4;
+        color: #ffffff;
         margin-bottom: 2px;
     }
     .step-sub {
         font-size: 0.78rem;
-        color: #6b7280;
+        color: #a1a1aa;
     }
 
     /* ── CONTEXT CHUNKS ── */
@@ -416,14 +470,14 @@ st.markdown("""
         margin-top: 8px;
     }
     .chunk-card {
-        background: rgba(16, 18, 20, 0.85);
-        border: 1px solid rgba(255, 215, 0, 0.2);
-        border-left: 3px solid #ffd700;
+        background: rgba(18, 18, 20, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-left: 3px solid #ffffff;
         border-radius: 8px;
         padding: 12px 16px;
         font-size: 0.84rem;
         line-height: 1.6;
-        color: #cbd5e1;
+        color: #e4e4e7;
         word-break: break-word;
     }
     .chunk-header {
@@ -434,7 +488,7 @@ st.markdown("""
         font-weight: 700;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: #ffd700;
+        color: #ffffff;
         margin-bottom: 6px;
     }
     .chunk-content {
@@ -446,30 +500,30 @@ st.markdown("""
 
     /* ── SIDEBAR CHUNKS CARD ── */
     .sidebar-chunk {
-        background: rgba(22, 22, 22, 0.9);
-        border: 1px solid rgba(255, 140, 0, 0.25);
+        background: rgba(18, 18, 20, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 8px;
         padding: 10px 12px;
         margin-bottom: 8px;
         font-size: 0.8rem;
         line-height: 1.5;
-        color: #9ca3af;
+        color: #a1a1aa;
     }
     .sidebar-chunk-title {
         font-weight: 700;
-        color: #fbbf24;
+        color: #ffffff;
         font-size: 0.75rem;
         margin-bottom: 4px;
     }
 
     /* ── SUGGESTED QUESTIONS ── */
     .suggestion-card {
-        background: rgba(16, 16, 16, 0.8);
-        border: 1px solid rgba(255, 140, 0, 0.2);
+        background: rgba(18, 18, 20, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.14);
         border-radius: 10px;
         padding: 12px 16px;
         margin-bottom: 8px;
-        color: #fbbf24;
+        color: #f4f4f5;
         font-size: 0.88rem;
         cursor: pointer;
         transition: all 0.2s ease;
@@ -478,41 +532,41 @@ st.markdown("""
         gap: 10px;
     }
     .suggestion-card:hover {
-        border-color: #ff8c00;
-        background: rgba(255, 140, 0, 0.08);
+        border-color: #ffffff;
+        background: rgba(255, 255, 255, 0.08);
         transform: translateX(4px);
     }
 
     /* ── SIDEBAR ── */
     [data-testid="stSidebar"] {
-        background: #0d0d0d !important;
-        border-right: 1px solid rgba(255,140,0,0.15) !important;
+        background: #09090b !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
     }
     [data-testid="stSidebar"] .stMarkdown p,
     [data-testid="stSidebar"] label {
-        color: #9ca3a0 !important;
+        color: #a1a1aa !important;
         font-size: 0.88rem !important;
     }
     [data-testid="stSidebar"] h3 {
-        color: #ff8c00 !important;
+        color: #ffffff !important;
         font-family: 'Syne', sans-serif !important;
         font-size: 1rem !important;
     }
     [data-testid="stFileUploadDropzone"] {
-        background: rgba(255,140,0,0.04) !important;
-        border: 1.5px dashed rgba(255,140,0,0.25) !important;
+        background: rgba(255, 255, 255, 0.03) !important;
+        border: 1.5px dashed rgba(255, 255, 255, 0.2) !important;
         border-radius: 10px !important;
     }
 
     /* ── EXPANDER ── */
     [data-testid="stExpander"] {
-        background: rgba(14, 14, 14, 0.75) !important;
-        border: 1px solid rgba(255, 215, 0, 0.2) !important;
+        background: rgba(18, 18, 20, 0.85) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
         border-radius: 12px !important;
         margin-bottom: 12px !important;
     }
     [data-testid="stExpander"] summary {
-        color: #ffd700 !important;
+        color: #ffffff !important;
         font-weight: 600 !important;
         font-size: 0.88rem !important;
     }
@@ -520,13 +574,13 @@ st.markdown("""
     /* ── FOOTER ── */
     .footer {
         text-align: center;
-        color: #374151;
+        color: #52525b;
         font-size: 0.78rem;
         padding: 2.5rem 0 1rem;
         letter-spacing: 0.04em;
     }
     .footer span {
-        color: #ff8c00;
+        color: #a1a1aa;
     }
 
     /* hide streamlit branding */
@@ -553,7 +607,7 @@ def inject_localstorage_sync():
 
 # Sidebar
 with st.sidebar:
-    st.markdown("### 🔥 Knowledge Base")
+    st.markdown("### Knowledge Base")
     st.markdown("Upload a PDF to embed it into Pinecone.")
     uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
 
@@ -569,7 +623,7 @@ with st.sidebar:
                     docs = loader.load()
 
                     from backend.pii_guardrails import mask_documents
-                    with st.spinner("🛡️ Applying Hybrid PII Guardrails (Masking & Redaction)..."):
+                    with st.spinner("Applying Hybrid PII Guardrails (Masking & Redaction)..."):
                         docs = mask_documents(docs)
 
                     splitter = RecursiveCharacterTextSplitter(
@@ -585,7 +639,7 @@ with st.sidebar:
                     )
 
                     os.unlink(tmp_path)
-                    st.success(f"✅ {len(chunks)} PII-redacted chunks embedded securely.")
+                    st.success(f"Success: {len(chunks)} PII-redacted chunks embedded securely.")
 
                     # Generate suggested questions from the PDF
                     with st.spinner("Generating suggested questions..."):
@@ -618,11 +672,11 @@ with st.sidebar:
 
     # Chat history controls
     st.markdown("---")
-    st.markdown("### 💬 Chat History")
+    st.markdown("### Chat History")
     msg_count = len(st.session_state.messages) // 2
-    st.markdown(f"<div style='color:#6b7280;font-size:0.82rem'>{msg_count} conversation{'s' if msg_count != 1 else ''}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='color:#71717a;font-size:0.82rem'>{msg_count} conversation{'s' if msg_count != 1 else ''}</div>", unsafe_allow_html=True)
 
-    if st.button("🗑️ Clear Chat", use_container_width=True):
+    if st.button("Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.session_state.suggested_questions = []
         st.session_state.latest_docs = []
@@ -635,9 +689,9 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<div style='color:#4b5563;font-size:0.75rem;line-height:1.6'>"
-        "🔴 Retrieve &nbsp;→&nbsp; ⚖️ Grade<br>"
-        "🌐 Web fallback &nbsp;→&nbsp; 🟢 Generate"
+        "<div style='color:#71717a;font-size:0.75rem;line-height:1.6'>"
+        "Retrieve &nbsp;→&nbsp; Grade<br>"
+        "Web fallback &nbsp;→&nbsp; Generate"
         "</div>",
         unsafe_allow_html=True
     )
@@ -660,7 +714,7 @@ if st.session_state.suggested_questions and len(st.session_state.messages) == 0:
     cols = st.columns(2)
     for i, question in enumerate(st.session_state.suggested_questions):
         with cols[i % 2]:
-            if st.button(f"💡 {question}", key=f"suggest_{i}", use_container_width=True):
+            if st.button(f"[?] {question}", key=f"suggest_{i}", use_container_width=True):
                 st.session_state._pending_question = question
                 st.rerun()
 
@@ -670,7 +724,7 @@ if st.session_state.messages:
     st.markdown('<div class="section-label">Conversation</div>', unsafe_allow_html=True)
 
     chat_html = '<div class="chat-container">'
-    for msg in st.session_state.messages:
+    for idx, msg in enumerate(st.session_state.messages):
         role = msg["role"]
         content = msg["content"]
 
@@ -692,22 +746,78 @@ if st.session_state.messages:
                 steps_html = f'<div class="chat-meta">Pipeline: {steps_info}</div>'
 
             source_tag = ""
-            if msg.get("web_searched"):
-                source_tag = '<span style="color:#ffd700;font-size:0.7rem;margin-left:8px;font-weight:600">🌐 Web</span>'
+            if msg.get("is_detailed"):
+                source_tag = '<span style="color:#ffffff;font-size:0.7rem;margin-left:8px;font-weight:600;letter-spacing:0.04em">[Web · Deep Dive]</span>'
+            elif msg.get("web_searched"):
+                source_tag = '<span style="color:#e4e4e7;font-size:0.7rem;margin-left:8px;font-weight:600;letter-spacing:0.04em">[Web]</span>'
             else:
-                source_tag = '<span style="color:#ff4500;font-size:0.7rem;margin-left:8px;font-weight:600">📄 RAG</span>'
+                source_tag = '<span style="color:#a1a1aa;font-size:0.7rem;margin-left:8px;font-weight:600;letter-spacing:0.04em">[RAG]</span>'
+
+            hitl_invite = ""
+            if idx == len(st.session_state.messages) - 1 and msg.get("web_searched") and not msg.get("is_detailed"):
+                hitl_invite = """
+                <div class="hitl-sub-banner">
+                    <div class="hitl-tag">LIVE WEB INTELLIGENCE</div>
+                    <div>Would you like an in-depth, structured technical explanation with all search findings?</div>
+                </div>
+                """
 
             chat_html += f"""
             <div class="chat-row assistant">
                 <div class="chat-bubble assistant">
                     <div class="chat-role ai-role">VertexMera {source_tag}</div>
                     <div class="chat-content-body">{formatted_ai_content}</div>
+                    {hitl_invite}
                     {steps_html}
                 </div>
             </div>"""
 
     chat_html += '</div>'
     st.markdown(chat_html, unsafe_allow_html=True)
+
+    # ── HITL (HUMAN-IN-THE-LOOP) ACTION BUTTON ──
+    # Rendered directly beneath the assistant message with matching width & styling
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+        latest_msg = st.session_state.messages[-1]
+        if latest_msg.get("web_searched") and not latest_msg.get("is_detailed"):
+            st.markdown('<div class="hitl-btn-wrap">', unsafe_allow_html=True)
+            if st.button("Yes, Generate Detailed Explanation", key=f"hitl_detail_{len(st.session_state.messages)}"):
+                with st.spinner("Synthesizing in-depth web analysis..."):
+                    try:
+                        from backend.nodes import generate_detailed_web_node
+
+                        hitl_start = time.time()
+                        last_user_q = ""
+                        for m in reversed(st.session_state.messages[:-1]):
+                            if m["role"] == "user":
+                                last_user_q = m["content"]
+                                break
+
+                        doc_objs = [
+                            Document(page_content=d) if isinstance(d, str) else d
+                            for d in latest_msg.get("docs", [])
+                        ]
+
+                        detail_res = generate_detailed_web_node({
+                            "question": last_user_q,
+                            "raw_question": last_user_q,
+                            "documents": doc_objs,
+                            "steps": list(latest_msg.get("steps", [])),
+                            "web_searched": True,
+                            "detail_requested": True
+                        })
+
+                        hitl_elapsed = round(time.time() - hitl_start, 2)
+                        latest_msg["content"] = detail_res["generation"]
+                        latest_msg["steps"] = detail_res["steps"]
+                        latest_msg["is_detailed"] = True
+                        latest_msg["time"] = hitl_elapsed
+
+                        inject_localstorage_sync()
+                        st.rerun()
+                    except Exception as hitl_err:
+                        st.error(f"Error expanding explanation: {hitl_err}")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 # Query Input
@@ -719,7 +829,7 @@ query = st.text_input(
     placeholder="Ask anything — e.g. What is insightflow?",
     value=pending if pending else ""
 )
-submit = st.button("🔥 Generate Answer")
+submit = st.button("Generate Answer")
 
 if pending and not submit:
     submit = True
@@ -797,17 +907,18 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
 
         steps_html = ""
         step_meta = {
-            "guardrail":  ("🛡️", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
-            "pii":        ("🛡️", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
-            "retrieval":  ("🔴", "retrieve",  "Queried Pinecone vector store"),
-            "grade":      ("🟠", "grade",     "Scored document relevance"),
-            "search":     ("🟡", "search",    "Fell back to Tavily web search"),
-            "generation": ("🟢", "generate",  "Generated final answer"),
+            "guardrail":  ("[01]", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "pii":        ("[01]", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "retrieval":  ("[02]", "retrieve",  "Queried Pinecone vector store"),
+            "grade":      ("[03]", "grade",     "Scored document relevance"),
+            "search":     ("[04]", "search",    "Fell back to Tavily web search"),
+            "detailed":   ("[05]", "detailed",  "Synthesized comprehensive deep-dive explanation (HITL)"),
+            "generation": ("[06]", "generate",  "Generated final answer"),
         }
 
         for i, step in enumerate(last_msg["steps"]):
             key = next((k for k in step_meta if k in step.lower()), None)
-            icon, cls, desc = step_meta[key] if key else ("⚪", "default", "Graph node executed")
+            icon, cls, desc = step_meta[key] if key else (f"[{i+1:02d}]", "default", "Graph node executed")
             label = step.replace("_", " ").title()
             steps_html += f"""
             <div class="step-card {cls}">
@@ -819,14 +930,14 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
             </div>"""
 
         if last_msg.get("time"):
-            steps_html += f'<div style="color:#4b5563;font-size:0.78rem;text-align:right;margin-top:4px">⏱ {last_msg["time"]}s</div>'
+            steps_html += f'<div style="color:#71717a;font-size:0.78rem;text-align:right;margin-top:4px">{last_msg["time"]}s</div>'
 
         st.markdown(steps_html, unsafe_allow_html=True)
 
     # Relevant Chunks Panel in Main View
     docs_to_show = last_msg.get("docs", [])
     if docs_to_show:
-        with st.expander(f"📚 Retrieved Context Chunks ({len(docs_to_show)})", expanded=False):
+        with st.expander(f"Retrieved Context Chunks ({len(docs_to_show)})", expanded=False):
             for i, chunk in enumerate(docs_to_show):
                 st.markdown(f"""
                 <div class="chunk-card">

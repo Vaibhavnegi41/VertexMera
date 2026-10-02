@@ -8,6 +8,7 @@ from backend.nodes import (
     generate_node,
     web_search,
     route_decision,
+    generate_detailed_web_node,
 )
 
 
@@ -34,3 +35,4 @@ def build_graph():
 
 
 chatbot = build_graph()
+__all__ = ["chatbot", "build_graph", "generate_detailed_web_node"]
