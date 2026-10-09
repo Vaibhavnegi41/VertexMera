@@ -1,4 +1,4 @@
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 scoring_prompt = ChatPromptTemplate.from_messages([
     (
@@ -45,14 +45,17 @@ rag_prompt = ChatPromptTemplate.from_messages([
         "3. If the context partially answers the question, provide what "
         "you can and explicitly note what is missing.\n\n"
         "## Formatting\n"
-        "- Use clear, well-structured prose. Use bullet points or "
-        "numbered lists when listing multiple items.\n"
+        "- Provide simple, clear, word-based explanations using standard text and readable markdown.\n"
+        "- Never include raw HTML tags (e.g. <div>, <span>, <br>, <p>, etc.).\n"
+        "- Do NOT provide code blocks unless the user explicitly requests code in their prompt.\n"
+        "- Use bullet points or numbered lists when listing multiple items.\n"
         "- Bold key terms on first mention for scannability.\n"
         "- Keep answers concise — aim for 3-6 sentences unless the "
         "question requires deeper elaboration.\n"
         "- Do not start with 'Based on the context...' or similar "
         "meta-phrasing. Answer directly."
     ),
+    MessagesPlaceholder(variable_name="chat_history", optional=True),
     (
         "human",
         "QUESTION:\n{question}\n\nCONTEXT:\n{documents}"
@@ -73,14 +76,17 @@ web_prompt = ChatPromptTemplate.from_messages([
         "3. Do not fabricate facts beyond what the results support. "
         "If results are insufficient, say so.\n\n"
         "## Formatting\n"
-        "- Use clear, well-structured prose. Use bullet points or "
-        "numbered lists when listing multiple items.\n"
+        "- Provide simple, clear, word-based explanations using natural conversational language and clean markdown.\n"
+        "- Never output raw HTML tags (e.g. <div>, <span>, <br>, <p>, etc.).\n"
+        "- Do NOT output code blocks unless the user explicitly requested code.\n"
+        "- Use bullet points or numbered lists when listing multiple items.\n"
         "- Bold key terms on first mention for scannability.\n"
         "- Keep answers concise — aim for 3-6 sentences unless the "
         "question requires deeper elaboration.\n"
         "- Do not start with 'Based on the search results...' or "
         "similar meta-phrasing. Answer directly."
     ),
+    MessagesPlaceholder(variable_name="chat_history", optional=True),
     (
         "human",
         "QUESTION:\n{question}\n\nWEB SEARCH RESULTS:\n{documents}"
@@ -98,13 +104,18 @@ web_detailed_prompt = ChatPromptTemplate.from_messages([
         "2. **Detailed Breakdown**: Thoroughly explain the key concepts, mechanisms, technical specifics, and architecture found in the search results.\n"
         "3. **Practical Examples / Nuances**: Highlight concrete examples, applications, or key differences.\n"
         "4. **Key Takeaways**: Bulleted list summarizing the most critical takeaways.\n\n"
-        "## Constraints\n"
+        "## Constraints & Formatting\n"
         "- Base all claims strictly on the provided WEB SEARCH RESULTS.\n"
-        "- Format clearly with bold headers, concise bullet points, and code/quote blocks where appropriate.\n"
+        "- Use clear, word-based explanations with bold headers and concise bullet points.\n"
+        "- Never output raw HTML tags (e.g. <div>, <span>, <br>, <p>, etc.).\n"
+        "- Only include code blocks if the user's prompt explicitly asks for code implementation.\n"
         "- Maintain high accuracy and eliminate fluff."
     ),
+    MessagesPlaceholder(variable_name="chat_history", optional=True),
     (
         "human",
         "QUESTION:\n{question}\n\nWEB SEARCH RESULTS:\n{documents}"
     )
 ])
+
+

@@ -146,3 +146,4 @@ def mask_documents(docs: list) -> list:
             if hasattr(doc, "metadata") and isinstance(doc.metadata, dict):
                 doc.metadata["pii_redacted"] = True
     return docs
+    return docs

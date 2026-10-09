@@ -1,5 +1,9 @@
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg_pool import ConnectionPool
+from psycopg.rows import dict_row
 
+from backend.config import POSTGRES_URI
 from backend.state import State
 from backend.nodes import (
     pii_guardrail_node,
@@ -11,8 +15,43 @@ from backend.nodes import (
     generate_detailed_web_node,
 )
 
+_checkpointer = None
+_pool = None
 
-def build_graph():
+
+def get_checkpointer():
+    """Initializes and returns a singleton PostgresSaver checkpointer instance.
+    Uses psycopg ConnectionPool and automatically executes PostgresSaver.setup()
+    to create checkpoint tables if they don't already exist.
+    """
+    global _checkpointer, _pool
+    if _checkpointer is not None:
+        return _checkpointer
+
+    try:
+        connection_kwargs = {
+            "autocommit": True,
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
+            "connect_timeout": 3,
+        }
+        _pool = ConnectionPool(
+            conninfo=POSTGRES_URI,
+            max_size=20,
+            kwargs=connection_kwargs,
+            open=True,
+            timeout=3.0,
+        )
+
+        _checkpointer = PostgresSaver(_pool)
+        _checkpointer.setup()
+        return _checkpointer
+    except Exception as e:
+        print(f"[Warning] Could not initialize PostgresSaver at {POSTGRES_URI}: {e}")
+        return None
+
+
+def build_graph(checkpointer=None):
     graph = StateGraph(State)
 
     graph.add_node("pii_guardrail", pii_guardrail_node)
@@ -21,9 +60,14 @@ def build_graph():
     graph.add_node("web_search", web_search)
     graph.add_node("generate", generate_node)
 
+    # Parallel fork (Fan-Out) from START to both PII Guardrail and Retrieval
     graph.add_edge(START, "pii_guardrail")
-    graph.add_edge("pii_guardrail", "retrieve")
+    graph.add_edge(START, "retrieve")
+
+    # Fan-In Join: grading waits for both pii_guardrail and retrieve to complete
+    graph.add_edge("pii_guardrail", "grading")
     graph.add_edge("retrieve", "grading")
+
     graph.add_conditional_edges("grading", route_decision, {
         "web_search": "web_search",
         "generate": "generate"
@@ -31,8 +75,12 @@ def build_graph():
     graph.add_edge("web_search", "generate")
     graph.add_edge("generate", END)
 
-    return graph.compile()
+    if checkpointer is None:
+        checkpointer = get_checkpointer()
+
+    return graph.compile(checkpointer=checkpointer)
 
 
 chatbot = build_graph()
-__all__ = ["chatbot", "build_graph", "generate_detailed_web_node"]
+__all__ = ["chatbot", "build_graph", "get_checkpointer", "generate_detailed_web_node"]
+

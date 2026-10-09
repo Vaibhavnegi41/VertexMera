@@ -46,6 +46,10 @@ PINECONE_API_KEY = get_secret("PINECONE_API_KEY")
 INDEX_NAME = get_secret("INDEX_NAME", "vertex-mera-index")
 GROQ_API_KEY = get_secret("GROQ_API_KEY")
 TAVILY_API_KEY = get_secret("TAVILY_API_KEY")
+LANGCHAIN_API_KEY = get_secret("LANGCHAIN_API_KEY")
+LANGCHAIN_PROJECT = get_secret("LANGCHAIN_PROJECT", "VertexMera-CRAG")
+LANGCHAIN_TRACING_V2 = get_secret("LANGCHAIN_TRACING_V2", "true")
+LANGCHAIN_ENDPOINT = get_secret("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
 
 if PINECONE_API_KEY:
     os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
@@ -53,6 +57,12 @@ if TAVILY_API_KEY:
     os.environ["TAVILY_API_KEY"] = TAVILY_API_KEY
 if GROQ_API_KEY:
     os.environ["GROQ_API_KEY"] = GROQ_API_KEY
+if LANGCHAIN_API_KEY:
+    os.environ["LANGCHAIN_API_KEY"] = LANGCHAIN_API_KEY
+    os.environ["LANGCHAIN_TRACING_V2"] = LANGCHAIN_TRACING_V2
+    os.environ["LANGCHAIN_ENDPOINT"] = LANGCHAIN_ENDPOINT
+    os.environ["LANGCHAIN_PROJECT"] = LANGCHAIN_PROJECT
+
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "backend"))
 
@@ -72,7 +82,13 @@ def load_chatbot():
 embedding_model = get_embedding_model()
 chatbot = load_chatbot()
 
+import uuid
+
 # Session state initialization
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
+if "conversations" not in st.session_state:
+    st.session_state.conversations = []
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "suggested_questions" not in st.session_state:
@@ -80,17 +96,58 @@ if "suggested_questions" not in st.session_state:
 if "latest_docs" not in st.session_state:
     st.session_state.latest_docs = []
 
+
+def format_title(text: str) -> str:
+    """Format a user query into a clean, scannable conversation title."""
+    if not text:
+        return "New Chat"
+    cleaned = text.strip()
+    cleaned = re.sub(r'^[^\w\s]+|[^\w\s\?]+$', '', cleaned)
+    if len(cleaned) > 28:
+        return cleaned[:25].rstrip() + "..."
+    return cleaned
+
+
+def sync_current_conversation(active_query_for_title: str = None):
+    """Sync the active session messages and docs into st.session_state.conversations."""
+    thread_id = st.session_state.thread_id
+    found = False
+    for conv in st.session_state.conversations:
+        if conv["id"] == thread_id:
+            conv["messages"] = list(st.session_state.messages)
+            conv["latest_docs"] = list(st.session_state.latest_docs)
+            conv["updated_at"] = time.time()
+            if active_query_for_title and conv.get("title", "New Chat") in ["New Chat", "Untitled"]:
+                conv["title"] = format_title(active_query_for_title)
+            found = True
+            break
+            
+    if not found and st.session_state.messages:
+        title = format_title(active_query_for_title or st.session_state.messages[0]["content"])
+        st.session_state.conversations.insert(0, {
+            "id": thread_id,
+            "title": title,
+            "messages": list(st.session_state.messages),
+            "latest_docs": list(st.session_state.latest_docs),
+            "updated_at": time.time()
+        })
+
+
+
 def format_markdown_to_html(text: str) -> str:
     """Converts markdown asterisks, code blocks, lists, and formatting into clean HTML."""
     if not text:
         return ""
     
-    # 1. Escape HTML entities
-    safe = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # 1. Strip accidental raw HTML tags to ensure clean word-based text output
+    cleaned = re.sub(r'</?(?:div|span|p|section|article|header|footer|script|style)[^>]*>', '', text)
     
-    # 2. Code blocks ```...```
+    # 2. Escape HTML entities
+    safe = cleaned.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    
+    # 3. Code blocks ```...``` (if code was explicitly provided)
     def replace_code_block(match):
-        code = match.group(2)
+        code = match.group(2).strip()
         return (
             f'<pre style="background:rgba(20,20,22,0.9);border:1px solid rgba(255,255,255,0.12);'
             f'padding:10px 14px;border-radius:8px;overflow-x:auto;font-family:monospace;'
@@ -98,43 +155,56 @@ def format_markdown_to_html(text: str) -> str:
         )
     safe = re.sub(r'```([a-zA-Z0-9_-]*)\n?(.*?)```', replace_code_block, safe, flags=re.DOTALL)
     
-    # 3. Inline code `...`
+    # 4. Inline code `...`
     safe = re.sub(
         r'`([^`]+)`',
         r'<code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.88em;color:#ffffff;">\1</code>',
         safe
     )
     
-    # 4. Bold **text** or __text__
+    # 5. Bold **text** or __text__
     safe = re.sub(r'\*\*(.+?)\*\*', r'<strong style="color:#ffffff;font-weight:700;">\1</strong>', safe)
     safe = re.sub(r'__(.+?)__', r'<strong style="color:#ffffff;font-weight:700;">\1</strong>', safe)
     
-    # 5. Italic *text* or _text_
+    # 6. Italic *text* or _text_
     safe = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', safe)
     safe = re.sub(r'_([^_]+)_', r'<em>\1</em>', safe)
     
-    # 6. Bullet lists
+    # 7. Bullet and numbered lists
     lines = safe.split('\n')
     formatted_lines = []
     in_list = False
+    list_type = "ul"
     for line in lines:
         stripped = line.strip()
         if stripped.startswith('- ') or stripped.startswith('* ') or stripped.startswith('• '):
             item_text = stripped[2:]
-            if not in_list:
+            if not in_list or list_type != "ul":
+                if in_list:
+                    formatted_lines.append(f'</{list_type}>')
                 formatted_lines.append('<ul style="margin:6px 0;padding-left:20px;">')
                 in_list = True
+                list_type = "ul"
+            formatted_lines.append(f'<li style="margin-bottom:4px;">{item_text}</li>')
+        elif re.match(r'^\d+[\.\)]\s+', stripped):
+            item_text = re.sub(r'^\d+[\.\)]\s+', '', stripped)
+            if not in_list or list_type != "ol":
+                if in_list:
+                    formatted_lines.append(f'</{list_type}>')
+                formatted_lines.append('<ol style="margin:6px 0;padding-left:20px;">')
+                in_list = True
+                list_type = "ol"
             formatted_lines.append(f'<li style="margin-bottom:4px;">{item_text}</li>')
         else:
             if in_list:
-                formatted_lines.append('</ul>')
+                formatted_lines.append(f'</{list_type}>')
                 in_list = False
             formatted_lines.append(line)
     if in_list:
-        formatted_lines.append('</ul>')
+        formatted_lines.append(f'</{list_type}>')
     
     res = "\n".join(formatted_lines)
-    # 7. Convert double linebreaks to spacing, single linebreaks to <br>
+    # 8. Convert double linebreaks to spacing, single linebreaks to <br>
     res = res.replace("\n\n", "<br><br>").replace("\n", "<br>")
     return res
 
@@ -583,26 +653,75 @@ st.markdown("""
         color: #a1a1aa;
     }
 
+    /* ── RECENTS HEADER & LIST (MATCHING SNAPSHOT 2) ── */
+    .recents-header {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #38bdf8;
+        letter-spacing: 0.02em;
+        margin: 0.8rem 0 0.5rem 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .recent-chat-btn .stButton > button {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 6px !important;
+        color: #f4f4f5 !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        padding: 0.45rem 0.55rem !important;
+        font-size: 0.88rem !important;
+        font-weight: 500 !important;
+        line-height: 1.3 !important;
+        width: 100% !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        box-shadow: none !important;
+        margin-bottom: 3px !important;
+        transition: all 0.15s ease !important;
+    }
+    .recent-chat-btn .stButton > button:hover {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
+        transform: translateX(3px) !important;
+    }
+    .recent-chat-btn.active .stButton > button {
+        background: rgba(56, 189, 248, 0.12) !important;
+        color: #38bdf8 !important;
+        font-weight: 600 !important;
+        border-left: 2.5px solid #38bdf8 !important;
+        border-radius: 0 6px 6px 0 !important;
+    }
+
+    .new-chat-btn .stButton > button {
+        background: rgba(255, 255, 255, 0.06) !important;
+        border: 1px solid rgba(255, 255, 255, 0.16) !important;
+        border-radius: 8px !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+        padding: 0.5rem 1rem !important;
+        margin-bottom: 0.6rem !important;
+        transition: all 0.2s ease !important;
+    }
+    .new-chat-btn .stButton > button:hover {
+        background: #ffffff !important;
+        color: #09090b !important;
+        border-color: #ffffff !important;
+        transform: translateY(-1.5px) !important;
+    }
+
     /* hide streamlit branding */
     #MainMenu, footer, header { visibility: hidden; }
     .block-container { padding-top: 0 !important; max-width: 760px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-
-# ── LOCALSTORAGE SYNC ─────────────────────────────────────
-def inject_localstorage_sync():
-    """Inject JS to sync chat history with browser localStorage."""
-    messages_json = json.dumps(st.session_state.messages)
-    components.html(f"""
-    <script>
-        const STORAGE_KEY = 'vertexmera_chat_history';
-        const currentMessages = {messages_json};
-        if (currentMessages.length > 0) {{
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(currentMessages));
-        }}
-    </script>
-    """, height=0)
 
 
 # Sidebar
@@ -660,7 +779,7 @@ with st.sidebar:
                                 if q and len(q) > 10:
                                     for prefix in ["1.", "2.", "3.", "4.", "1)", "2)", "3)", "4)"]:
                                         if q.startswith(prefix):
-                                            q = q[len(prefix):].strip()
+                                             q = q[len(prefix):].strip()
                                     cleaned.append(q)
                             st.session_state.suggested_questions = cleaned[:4]
                         except Exception:
@@ -670,24 +789,41 @@ with st.sidebar:
                     st.error(f"Error: {str(e)}")
 
 
-    # Chat history controls
+    # ── RECENTS CHAT CONVERSATION HISTORY (SNAPSHOT 2) ──
     st.markdown("---")
-    st.markdown("### Chat History")
-    msg_count = len(st.session_state.messages) // 2
-    st.markdown(f"<div style='color:#71717a;font-size:0.82rem'>{msg_count} conversation{'s' if msg_count != 1 else ''}</div>", unsafe_allow_html=True)
-
-    if st.button("Clear Chat", use_container_width=True):
+    
+    st.markdown('<div class="new-chat-btn">', unsafe_allow_html=True)
+    if st.button("+ New Chat", key="btn_new_chat", use_container_width=True):
+        st.session_state.thread_id = str(uuid.uuid4())
         st.session_state.messages = []
-        st.session_state.suggested_questions = []
         st.session_state.latest_docs = []
-        components.html("""
-        <script>
-            localStorage.removeItem('vertexmera_chat_history');
-        </script>
-        """, height=0)
+        st.session_state.suggested_questions = []
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="recents-header"><span>Recents</span> <span style="font-size:0.75rem;color:#38bdf8;">▾</span></div>', unsafe_allow_html=True)
+
+    if st.session_state.conversations:
+        for idx, conv in enumerate(st.session_state.conversations):
+            is_active = (conv["id"] == st.session_state.thread_id)
+            title = conv.get("title", "Conversation")
+            btn_key = f"recent_conv_{conv['id']}_{idx}"
+
+            active_cls = "recent-chat-btn active" if is_active else "recent-chat-btn"
+            st.markdown(f'<div class="{active_cls}">', unsafe_allow_html=True)
+            if st.button(title, key=btn_key, use_container_width=True, help=conv.get("title")):
+                st.session_state.thread_id = conv["id"]
+                st.session_state.messages = list(conv.get("messages", []))
+                st.session_state.latest_docs = list(conv.get("latest_docs", []))
+                st.session_state.suggested_questions = []
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='color:#52525b;font-size:0.82rem;padding:4px 0 10px;font-style:italic;'>No recent chats yet</div>", unsafe_allow_html=True)
 
     st.markdown("---")
+
+
     st.markdown(
         "<div style='color:#71717a;font-size:0.75rem;line-height:1.6'>"
         "Retrieve &nbsp;→&nbsp; Grade<br>"
@@ -723,20 +859,22 @@ if st.session_state.suggested_questions and len(st.session_state.messages) == 0:
 if st.session_state.messages:
     st.markdown('<div class="section-label">Conversation</div>', unsafe_allow_html=True)
 
-    chat_html = '<div class="chat-container">'
+    chat_rows = []
     for idx, msg in enumerate(st.session_state.messages):
         role = msg["role"]
         content = msg["content"]
 
         if role == "user":
             content_safe = content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
-            chat_html += f"""
-            <div class="chat-row user">
-                <div class="chat-bubble user">
-                    <div class="chat-role user-role">You</div>
-                    <div class="chat-content-body">{content_safe}</div>
-                </div>
-            </div>"""
+            row_html = (
+                f'<div class="chat-row user">'
+                f'<div class="chat-bubble user">'
+                f'<div class="chat-role user-role">You</div>'
+                f'<div class="chat-content-body">{content_safe}</div>'
+                f'</div>'
+                f'</div>'
+            )
+            chat_rows.append(row_html)
         else:
             formatted_ai_content = format_markdown_to_html(content)
 
@@ -755,25 +893,27 @@ if st.session_state.messages:
 
             hitl_invite = ""
             if idx == len(st.session_state.messages) - 1 and msg.get("web_searched") and not msg.get("is_detailed"):
-                hitl_invite = """
-                <div class="hitl-sub-banner">
-                    <div class="hitl-tag">LIVE WEB INTELLIGENCE</div>
-                    <div>Would you like an in-depth, structured technical explanation with all search findings?</div>
-                </div>
-                """
+                hitl_invite = (
+                    '<div class="hitl-sub-banner">'
+                    '<div class="hitl-tag">LIVE WEB INTELLIGENCE</div>'
+                    '<div>Would you like an in-depth, structured technical explanation with all search findings?</div>'
+                    '</div>'
+                )
 
-            chat_html += f"""
-            <div class="chat-row assistant">
-                <div class="chat-bubble assistant">
-                    <div class="chat-role ai-role">VertexMera {source_tag}</div>
-                    <div class="chat-content-body">{formatted_ai_content}</div>
-                    {hitl_invite}
-                    {steps_html}
-                </div>
-            </div>"""
+            row_html = (
+                f'<div class="chat-row assistant">'
+                f'<div class="chat-bubble assistant">'
+                f'<div class="chat-role ai-role">VertexMera {source_tag}</div>'
+                f'<div class="chat-content-body">{formatted_ai_content}</div>'
+                f'{hitl_invite}'
+                f'{steps_html}'
+                f'</div>'
+                f'</div>'
+            )
+            chat_rows.append(row_html)
 
-    chat_html += '</div>'
-    st.markdown(chat_html, unsafe_allow_html=True)
+    full_chat_html = f'<div class="chat-container">{"".join(chat_rows)}</div>'
+    st.markdown(full_chat_html, unsafe_allow_html=True)
 
     # ── HITL (HUMAN-IN-THE-LOOP) ACTION BUTTON ──
     # Rendered directly beneath the assistant message with matching width & styling
@@ -813,48 +953,54 @@ if st.session_state.messages:
                         latest_msg["is_detailed"] = True
                         latest_msg["time"] = hitl_elapsed
 
-                        inject_localstorage_sync()
+                        sync_current_conversation()
                         st.rerun()
                     except Exception as hitl_err:
                         st.error(f"Error expanding explanation: {hitl_err}")
             st.markdown('</div>', unsafe_allow_html=True)
 
 
-# Query Input
+# Query Input Form (Handles Enter key, click, and multiple queries seamlessly)
 pending = st.session_state.pop("_pending_question", None)
 
-query = st.text_input(
-    label="question",
-    label_visibility="collapsed",
-    placeholder="Ask anything — e.g. What is insightflow?",
-    value=pending if pending else ""
-)
-submit = st.button("Generate Answer")
+with st.form(key="query_form", clear_on_submit=True):
+    query_input = st.text_input(
+        label="question",
+        label_visibility="collapsed",
+        placeholder="Ask anything — e.g. What is insightflow?",
+        value=pending if pending else ""
+    )
+    submit_btn = st.form_submit_button("Generate Answer", use_container_width=True)
 
-if pending and not submit:
-    submit = True
-
+# Determine active query to run
+active_query = ""
+if pending:
+    active_query = pending
+elif submit_btn and query_input and query_input.strip():
+    active_query = query_input.strip()
 
 # Pipeline Execution
-if submit and query:
+if active_query:
     st.session_state.messages.append({
         "role": "user",
-        "content": query
+        "content": active_query
     })
 
     with st.spinner("Running CRAG pipeline..."):
         try:
             start_time = time.time()
+            config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
             results = chatbot.invoke({
-                'question': query,
+                'question': active_query,
                 'documents': [],
                 'steps': [],
                 'generation': '',
                 'web_searched': False,
                 'pii_map': {},
                 'pii_redacted': False
-            })
+            }, config=config)
+
 
             elapsed = round(time.time() - start_time, 2)
 
@@ -885,7 +1031,7 @@ if submit and query:
                 "docs": doc_strings
             })
 
-            inject_localstorage_sync()
+            sync_current_conversation(active_query)
             st.rerun()
 
         except Exception as e:
@@ -893,7 +1039,7 @@ if submit and query:
             if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
                 st.session_state.messages.pop()
 
-elif submit and not query:
+elif submit_btn and not query_input.strip():
     st.warning("Please enter a question first.")
 
 
@@ -949,7 +1095,6 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
                 </div>
                 """, unsafe_allow_html=True)
 
-inject_localstorage_sync()
 
 # Footer
 st.markdown("""
