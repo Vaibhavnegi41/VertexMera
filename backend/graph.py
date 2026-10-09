@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.memory import MemorySaver
 from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 
@@ -33,16 +34,12 @@ def get_checkpointer():
             "autocommit": True,
             "prepare_threshold": 0,
             "row_factory": dict_row,
-            "connect_timeout": 3,
         }
         _pool = ConnectionPool(
             conninfo=POSTGRES_URI,
-            max_size=20,
+            max_size=10,
             kwargs=connection_kwargs,
-            open=True,
-            timeout=3.0,
         )
-
         _checkpointer = PostgresSaver(_pool)
         _checkpointer.setup()
         return _checkpointer
@@ -77,6 +74,9 @@ def build_graph(checkpointer=None):
 
     if checkpointer is None:
         checkpointer = get_checkpointer()
+
+    if checkpointer is None:
+        checkpointer = MemorySaver()
 
     return graph.compile(checkpointer=checkpointer)
 
