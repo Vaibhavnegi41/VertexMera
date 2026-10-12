@@ -1,14 +1,15 @@
 import uuid
-from backend.graph import chatbot  
+import asyncio
+from backend.graph import chatbot
 
 
-if __name__ == "__main__":
-    # Current conversation session thread ID for PostgresSaver persistence
+async def main():
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
-    print(f"--- Running VertexMera Pipeline (Thread: {thread_id}) ---")
-    results = chatbot.invoke({
+    print(f"--- Running VertexMera Async Pipeline (Thread: {thread_id}) ---")
+
+    results = await chatbot.ainvoke({
         "question": "what is linear regression?",
         "documents": [],
         "steps": [],
@@ -21,3 +22,7 @@ if __name__ == "__main__":
     print("Generation:\n", results.get("generation"))
     print("\nSteps:\n", results.get("steps"))
     print("\nPII Redacted:", results.get("pii_redacted", False))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

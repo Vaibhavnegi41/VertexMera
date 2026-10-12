@@ -1,3 +1,4 @@
+import asyncio
 from typing import Literal
 from pydantic import BaseModel
 from langchain_core.documents import Document
@@ -7,6 +8,7 @@ from backend.state import State
 from backend.config import model, grading_model, vector_store, web_search_tool
 from backend.prompts import scoring_prompt, rag_prompt, web_prompt, web_detailed_prompt
 from backend.pii_guardrails import get_guardrails, mask_documents
+from backend.intent_router import should_web_search_directly
 
 CONFIDENCE_THRESHOLD = 0.85
 
@@ -18,11 +20,11 @@ class ScoreFormat(BaseModel):
 score_model = grading_model.with_structured_output(ScoreFormat)
 
 
-def pii_guardrail_node(state: State):
+async def pii_guardrail_node(state: State):
     question = state.get("question", "")
 
     guard = get_guardrails()
-    res = guard.mask(question)
+    res = await asyncio.to_thread(guard.mask, question)
 
     messages = state.get("messages", [])
     new_messages = []
@@ -39,10 +41,10 @@ def pii_guardrail_node(state: State):
     }
 
 
-def retrieve(state: State):
-    # Use raw question or question for semantic similarity search
+async def retrieve(state: State):
     question = state.get("raw_question") or state.get("question", "")
-    docs_with_scores = vector_store.similarity_search_with_score(question, k=4)
+
+    docs_with_scores = await vector_store.asimilarity_search_with_score(question, k=4)
 
     documents = []
     for doc, score in docs_with_scores:
@@ -57,7 +59,7 @@ def retrieve(state: State):
     }
 
 
-def grade_documents(state: State):
+async def grade_documents(state: State):
     question = state.get("question", "")
     documents = state.get("documents", [])
 
@@ -80,7 +82,7 @@ def grade_documents(state: State):
         for doc in documents
     ]
 
-    results = score_model.batch(prompts)
+    results = await score_model.abatch(prompts)
     filtered_docs = [doc for doc, result in zip(documents, results) if result.score]
     search = len(filtered_docs) == 0
 
@@ -91,19 +93,17 @@ def grade_documents(state: State):
     }
 
 
-def generate_node(state: State):
+async def generate_node(state: State):
     documents = state.get("documents", [])
     context_str = "\n\n".join([doc.page_content for doc in documents])
     
     if state.get("web_searched"):
-        # For public web search results, preserve authentic source entities
         question = state.get("raw_question") or state.get("question", "")
         prompt = web_detailed_prompt if state.get("detail_requested") else web_prompt
     else:
         question = state.get("question", "")
         prompt = rag_prompt
 
-    # Extract prior chat history (excluding the current turn question if present)
     chat_history = state.get("messages", [])
     current_q = state.get("raw_question") or state.get("question", "")
     prior_messages = [
@@ -111,7 +111,7 @@ def generate_node(state: State):
         if getattr(m, "content", "") != current_q
     ]
 
-    generation = model.invoke(
+    generation = await model.ainvoke(
         prompt.format_messages(
             question=question,
             documents=context_str,
@@ -123,14 +123,13 @@ def generate_node(state: State):
 
     return {
         "generation": generation.content,
-        "steps": ["Generation_node"],
+        "steps": ["generation_node"],
         "is_detailed": state.get("detail_requested", False),
         "messages": [ai_msg]
     }
 
 
-def generate_detailed_web_node(state: State):
-    """Generates an in-depth, structured breakdown using already cached web search documents (zero extra search latency)."""
+async def generate_detailed_web_node(state: State):
     question = state.get("raw_question") or state.get("question", "")
     documents = state.get("documents", [])
 
@@ -142,7 +141,7 @@ def generate_detailed_web_node(state: State):
         if getattr(m, "content", "") != question
     ]
 
-    generation = model.invoke(
+    generation = await model.ainvoke(
         web_detailed_prompt.format_messages(
             question=question,
             documents=context_str,
@@ -163,12 +162,9 @@ def generate_detailed_web_node(state: State):
     }
 
 
-
-def web_search(state: State):
-    # Search external web using original question without PII masking to find accurate public web information
+async def web_search(state: State):
     search_query = state.get("raw_question") or state.get("question", "")
-
-    web_response = web_search_tool.invoke(search_query)
+    web_response = await web_search_tool.ainvoke(search_query)
     web_docs = []
 
     if isinstance(web_response, list):
@@ -183,8 +179,6 @@ def web_search(state: State):
             if content:
                 web_docs.append(Document(page_content=content))
 
-    # Public web search sources do not contain internal sensitive PII,
-    # keep raw source information for high accuracy.
     return {
         "documents": web_docs,
         "web_searched": True,
@@ -192,7 +186,14 @@ def web_search(state: State):
     }
 
 
+def route_after_pii(state: State) -> Literal["web_search", "retrieve"]:
+    query = state.get("raw_question") or state.get("question", "")
+    if should_web_search_directly(query):
+        return "web_search"
+    return "retrieve"
+
+
 def route_decision(state: State) -> Literal["web_search", "generate"]:
-    if state["search"]:
+    if state.get("search", False):
         return "web_search"
     return "generate"

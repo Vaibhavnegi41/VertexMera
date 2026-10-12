@@ -4,6 +4,7 @@ import sys
 import os
 import re
 import json
+import asyncio
 import tempfile
 import time
 from dotenv import load_dotenv
@@ -76,8 +77,50 @@ def get_embedding_model():
 def load_chatbot():
     from backend.pii_guardrails import get_guardrails
     get_guardrails().mask("warmup")
-    from backend.main import chatbot
-    return chatbot
+    import importlib
+    import backend.intent_router
+    importlib.reload(backend.intent_router)
+    import backend.state
+    importlib.reload(backend.state)
+    import backend.nodes
+    importlib.reload(backend.nodes)
+    import backend.graph
+    importlib.reload(backend.graph)
+    return backend.graph.build_graph()
+
+
+def extract_latest_turn_steps(steps: list) -> list:
+    if not steps:
+        return []
+
+    gen_indices = [
+        i for i, s in enumerate(steps)
+        if "generation" in s.lower() and "detailed" not in s.lower()
+    ]
+    if len(gen_indices) > 1:
+        return steps[gen_indices[-2] + 1:]
+
+    pii_indices = [
+        i for i, s in enumerate(steps)
+        if "pii" in s.lower() or "guardrail" in s.lower()
+    ]
+    if len(pii_indices) > 1:
+        return steps[pii_indices[-1]:]
+
+    return steps
+
+
+def run_async(coro):
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
+
 
 embedding_model = get_embedding_model()
 chatbot = load_chatbot()
@@ -880,7 +923,8 @@ if st.session_state.messages:
 
             steps_html = ""
             if msg.get("steps"):
-                steps_info = " → ".join(msg["steps"])
+                display_steps = extract_latest_turn_steps(msg["steps"])
+                steps_info = " → ".join(display_steps)
                 steps_html = f'<div class="chat-meta">Pipeline: {steps_info}</div>'
 
             source_tag = ""
@@ -938,18 +982,22 @@ if st.session_state.messages:
                             for d in latest_msg.get("docs", [])
                         ]
 
-                        detail_res = generate_detailed_web_node({
+                        detail_res = run_async(generate_detailed_web_node({
                             "question": last_user_q,
                             "raw_question": last_user_q,
                             "documents": doc_objs,
                             "steps": list(latest_msg.get("steps", [])),
                             "web_searched": True,
                             "detail_requested": True
-                        })
+                        }))
 
                         hitl_elapsed = round(time.time() - hitl_start, 2)
                         latest_msg["content"] = detail_res["generation"]
-                        latest_msg["steps"] = detail_res["steps"]
+                        current_steps = list(latest_msg.get("steps", []))
+                        for new_s in detail_res.get("steps", []):
+                            if new_s not in current_steps:
+                                current_steps.append(new_s)
+                        latest_msg["steps"] = current_steps
                         latest_msg["is_detailed"] = True
                         latest_msg["time"] = hitl_elapsed
 
@@ -991,7 +1039,7 @@ if active_query:
             start_time = time.time()
             config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
-            results = chatbot.invoke({
+            results = run_async(chatbot.ainvoke({
                 'question': active_query,
                 'documents': [],
                 'steps': [],
@@ -999,13 +1047,14 @@ if active_query:
                 'web_searched': False,
                 'pii_map': {},
                 'pii_redacted': False
-            }, config=config)
+            }, config=config))
 
 
             elapsed = round(time.time() - start_time, 2)
 
             generation = results.get("generation", "No response generated.")
-            steps = results.get("steps", [])
+            raw_steps = results.get("steps", [])
+            steps = extract_latest_turn_steps(raw_steps)
             web_searched = results.get("web_searched", False)
             raw_docs = results.get("documents", [])
 
@@ -1053,22 +1102,22 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
 
         steps_html = ""
         step_meta = {
-            "guardrail":  ("[01]", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
-            "pii":        ("[01]", "guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
-            "retrieval":  ("[02]", "retrieve",  "Queried Pinecone vector store"),
-            "grade":      ("[03]", "grade",     "Scored document relevance"),
-            "search":     ("[04]", "search",    "Fell back to Tavily web search"),
-            "detailed":   ("[05]", "detailed",  "Synthesized comprehensive deep-dive explanation (HITL)"),
-            "generation": ("[06]", "generate",  "Generated final answer"),
+            "guardrail":  ("guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "pii":        ("guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "retrieval":  ("retrieve",  "Queried Pinecone vector store"),
+            "grade":      ("grade",     "Scored document relevance"),
+            "search":     ("search",    "Fell back to Tavily web search"),
+            "detailed":   ("detailed",  "Synthesized comprehensive deep-dive explanation (HITL)"),
+            "generation": ("generate",  "Generated final answer"),
         }
 
-        for i, step in enumerate(last_msg["steps"]):
+        trace_steps = extract_latest_turn_steps(last_msg["steps"])
+        for i, step in enumerate(trace_steps):
             key = next((k for k in step_meta if k in step.lower()), None)
-            icon, cls, desc = step_meta[key] if key else (f"[{i+1:02d}]", "default", "Graph node executed")
+            cls, desc = step_meta[key] if key else ("default", "Graph node executed")
             label = step.replace("_", " ").title()
             steps_html += f"""
             <div class="step-card {cls}">
-                <div class="step-icon">{icon}</div>
                 <div class="step-body">
                     <div class="step-title">Step {i+1} — {label}</div>
                     <div class="step-sub">{desc}</div>
