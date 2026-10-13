@@ -696,28 +696,43 @@ st.markdown("""
         color: #a1a1aa;
     }
 
-    /* ── RECENTS HEADER & LIST (MATCHING SNAPSHOT 2) ── */
+    /* ── RECENTS HEADER & LIST ── */
     .recents-header {
         font-family: 'Space Grotesk', sans-serif;
         font-size: 0.95rem;
         font-weight: 700;
         color: #38bdf8;
         letter-spacing: 0.02em;
-        margin: 0.8rem 0 0.5rem 0;
+        margin: 0.8rem 0 0.35rem 0;
         display: flex;
         align-items: center;
         gap: 6px;
     }
 
-    .recent-chat-btn .stButton > button {
-        background: transparent !important;
-        border: none !important;
-        border-radius: 6px !important;
+    /* Container for conversation history with tightly reduced spacing */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) {
+        gap: 4px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.recents-container) {
+        display: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) > [data-testid="stElementContainer"] {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Style the conversation history buttons */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) .stButton > button {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        border-radius: 8px !important;
         color: #f4f4f5 !important;
         text-align: left !important;
         justify-content: flex-start !important;
-        padding: 0.45rem 0.55rem !important;
-        font-size: 0.88rem !important;
+        padding: 0.45rem 0.7rem !important;
+        font-size: 0.86rem !important;
         font-weight: 500 !important;
         line-height: 1.3 !important;
         width: 100% !important;
@@ -725,20 +740,29 @@ st.markdown("""
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         box-shadow: none !important;
-        margin-bottom: 3px !important;
+        margin: 0 !important;
         transition: all 0.15s ease !important;
     }
-    .recent-chat-btn .stButton > button:hover {
-        background: rgba(255, 255, 255, 0.08) !important;
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) .stButton > button:hover {
+        background: rgba(255, 255, 255, 0.1) !important;
+        border-color: rgba(255, 255, 255, 0.3) !important;
         color: #ffffff !important;
-        transform: translateX(3px) !important;
+        transform: translateX(2px) !important;
     }
-    .recent-chat-btn.active .stButton > button {
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) button[data-testid="baseButton-primary"],
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) .stButton > button[kind="primary"] {
         background: rgba(56, 189, 248, 0.12) !important;
+        border: 1px solid rgba(56, 189, 248, 0.45) !important;
+        border-left: 3.5px solid #38bdf8 !important;
         color: #38bdf8 !important;
         font-weight: 600 !important;
-        border-left: 2.5px solid #38bdf8 !important;
-        border-radius: 0 6px 6px 0 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) .stButton > button p,
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.recents-container) .stButton > button div {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        text-align: left !important;
     }
 
     .new-chat-btn .stButton > button {
@@ -847,33 +871,27 @@ with st.sidebar:
     st.markdown('<div class="recents-header"><span>Recents</span> <span style="font-size:0.75rem;color:#38bdf8;">▾</span></div>', unsafe_allow_html=True)
 
     if st.session_state.conversations:
-        for idx, conv in enumerate(st.session_state.conversations):
-            is_active = (conv["id"] == st.session_state.thread_id)
-            title = conv.get("title", "Conversation")
-            btn_key = f"recent_conv_{conv['id']}_{idx}"
+        with st.container():
+            st.markdown('<div class="recents-container"></div>', unsafe_allow_html=True)
+            for idx, conv in enumerate(st.session_state.conversations):
+                is_active = (conv["id"] == st.session_state.thread_id)
+                title = conv.get("title", "Conversation")
+                btn_key = f"recent_conv_{conv['id']}_{idx}"
 
-            active_cls = "recent-chat-btn active" if is_active else "recent-chat-btn"
-            st.markdown(f'<div class="{active_cls}">', unsafe_allow_html=True)
-            if st.button(title, key=btn_key, use_container_width=True, help=conv.get("title")):
-                st.session_state.thread_id = conv["id"]
-                st.session_state.messages = list(conv.get("messages", []))
-                st.session_state.latest_docs = list(conv.get("latest_docs", []))
-                st.session_state.suggested_questions = []
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+                if st.button(
+                    title,
+                    key=btn_key,
+                    use_container_width=True,
+                    help=conv.get("title"),
+                    type="primary" if is_active else "secondary"
+                ):
+                    st.session_state.thread_id = conv["id"]
+                    st.session_state.messages = list(conv.get("messages", []))
+                    st.session_state.latest_docs = list(conv.get("latest_docs", []))
+                    st.session_state.suggested_questions = []
+                    st.rerun()
     else:
         st.markdown("<div style='color:#52525b;font-size:0.82rem;padding:4px 0 10px;font-style:italic;'>No recent chats yet</div>", unsafe_allow_html=True)
-
-    st.markdown("---")
-
-
-    st.markdown(
-        "<div style='color:#71717a;font-size:0.75rem;line-height:1.6'>"
-        "Retrieve &nbsp;→&nbsp; Grade<br>"
-        "Web fallback &nbsp;→&nbsp; Generate"
-        "</div>",
-        unsafe_allow_html=True
-    )
 
 
 # Hero Header
@@ -1143,11 +1161,3 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
                     <div class="chunk-content">{chunk}</div>
                 </div>
                 """, unsafe_allow_html=True)
-
-
-# Footer
-st.markdown("""
-<div class="footer">
-    Powered by <span>LangGraph</span> · <span>Pinecone</span> · <span>Tavily</span> · <span>Streamlit</span>
-</div>
-""", unsafe_allow_html=True)
