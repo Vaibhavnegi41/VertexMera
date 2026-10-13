@@ -17,7 +17,6 @@ class PIIResult:
     entities: List[PIIEntity] = field(default_factory=list)
     pii_map: Dict[str, str] = field(default_factory=dict)
 
-# Deterministic regex patterns for structured PII
 PATTERNS: List[Tuple[str, re.Pattern]] = [
     ("EMAIL", re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b", re.IGNORECASE)),
     ("PHONE", re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s\-.]?)?(?:\(?\d{2,4}\)?[\s\-.]?)\d{3,4}[\s\-.]?\d{3,4}(?!\w)")),
@@ -31,7 +30,7 @@ PATTERNS: List[Tuple[str, re.Pattern]] = [
     ("SECRET_KEY", re.compile(r"\b(?:api[_\-]?key|secret|token|password|auth[_\-]?token)[\s:=]+['\"]?([A-Za-z0-9_\-\.]{16,})['\"]?\b", re.IGNORECASE)),
 ]
 
-# Common label words that should never be tagged as PII entities by model
+
 EXCLUDED_WORDS = {
     "ssn", "pan", "dob", "email", "mail", "phone", "tel", "fax", 
     "id", "url", "pin", "name", "address", "zip", "aadhaar", "passport", "token"
@@ -53,7 +52,6 @@ def get_nlp_model():
     if _nlp is None:
         try:
             import spacy
-            # Disable unnecessary pipeline components to run 10x faster
             _nlp = spacy.load("en_core_web_sm", disable=["tagger", "parser", "attribute_ruler", "lemmatizer"])
         except Exception:
             _nlp = None
@@ -102,7 +100,6 @@ class PIIGuardrails:
                 except Exception:
                     pass
 
-        # 3. Deduplicate overlapping spans
         entities.sort(key=lambda e: (e.start, -(e.end - e.start)))
         merged: List[PIIEntity] = []
         for ent in entities:
@@ -124,7 +121,6 @@ class PIIGuardrails:
         return dict(self._pii_map)
 
 
-# Global singleton instance
 _guard = None
 
 def get_guardrails() -> PIIGuardrails:
