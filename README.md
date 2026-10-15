@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔥 VertexMera — CRAG AI System
+#  VertexMera — CRAG AI System
 
 ### Privacy-First Corrective Retrieval Augmented Generation
 
@@ -10,7 +10,7 @@
 
 ---
 
-## 🧠 What is VertexMera?
+##  What is VertexMera?
 
 **VertexMera** is a production-ready **Corrective RAG (CRAG)** system that goes beyond standard retrieval-augmented generation. Instead of blindly trusting retrieved documents, it **grades their relevance** — and if they fall short, it **automatically falls back to live web search** before generating an answer.
 
@@ -20,31 +20,31 @@ It is also **privacy-first**: a hybrid PII guardrail sanitizes documents *before
 
 ---
 
-## ⚡ How It Works
+##  How It Works
 
 ```
 User Question
       │
       ▼
- 🛡️ PII Guardrail     ← Regex + spaCy NER sanitization (~6 ms)
+  PII Guardrail     ← Regex + spaCy NER sanitization (~6 ms)
       │
       ▼
- 🔴 Retrieve          ← Pinecone vector store (semantic search + cosine scores)
+  Retrieve          ← Pinecone vector store (semantic search + cosine scores)
       │
-      ├── Top score ≥ 0.85? ──► ⚡ Fast Path (skip grading) ──► 🟢 Generate Answer
+      ├── Top score ≥ 0.85? ──►  Fast Path (skip grading) ──►  Generate Answer
       │
       ▼
- 🟠 Grade Documents   ← LLM structured-output classifier (ScoreFormat)
+  Grade Documents   ← LLM structured-output classifier (ScoreFormat)
       │
-      ├── Relevant? ──► 🟢 Generate Answer  ← RAG prompt (strict)
+      ├── Relevant? ──►  Generate Answer  ← RAG prompt (strict)
       │
-      └── Not relevant? ──► 🟡 Web Search (Tavily)
+      └── Not relevant? ──►  Web Search (Tavily)
                                   │
                                   ▼
-                          🛡️ PII Guardrail on web results
+                           PII Guardrail on web results
                                   │
                                   ▼
-                          🟢 Generate Answer  ← Web prompt (synthesis)
+                           Generate Answer  ← Web prompt (synthesis)
 ```
 
 The pipeline is a **LangGraph state machine**:
@@ -54,33 +54,33 @@ Each node is a distinct, traceable step visible live in the UI.
 
 ---
 
-## 🚀 Features
+##  Features
 
-### 🛡️ 1. Hybrid PII Guardrails & Privacy-Preserving Ingestion
+###  1. Hybrid PII Guardrails & Privacy-Preserving Ingestion
 - **Two-pass hybrid sanitization**
   - **Pass 1 — Deterministic regex engine** for structured PII: emails, phone numbers, SSNs, credit cards, IP addresses, dates of birth, Indian **PAN / Aadhaar**, and API keys
   - **Pass 2 — Lightweight, optimized spaCy NER** for semantic entities: person names, organizations, and locations
 - **Zero-PII vector storage** — documents are sanitized *before* chunking and embedding, so Pinecone only ever stores redacted tokens such as `[PERSON_NAME_1]` and `[EMAIL_1]`
 - **Real-time question sanitization in ~6 ms**, so external LLMs never see private data
 
-### 🔄 2. Corrective RAG (CRAG) State Graph
+###  2. Corrective RAG (CRAG) State Graph
 - **Deterministic state control** — LangGraph orchestrates a multi-stage state machine instead of a simple unverified RAG chain
 - **Relevance grading** — a structured-output classifier (`ScoreFormat` boolean model) on Groq checks whether retrieved chunks contain substantive facts before they reach the generator
 - **Modular graph** — nodes are easy to extend or swap
 
-### ⚡ 3. Confidence-Score Pre-Filtering (Sub-Second Fast Path)
+###  3. Confidence-Score Pre-Filtering (Sub-Second Fast Path)
 - **Similarity-aware retrieval** — cosine similarity scores are attached directly to retrieved chunks
 - **Latency optimization** — if the top chunk scores **≥ 0.85**, the pipeline treats it as a high-confidence match and **skips the grading LLM call**, cutting end-to-end response time by **~1.2 seconds**
 
-### 🌐 4. Automated Live Web Search Fallback (Tavily)
+###  4. Automated Live Web Search Fallback (Tavily)
 - **Autonomous knowledge correction** — when the uploaded document doesn't contain the answer (out-of-domain or missing context), a conditional branch triggers Tavily web search
 - **Sanitized web context** — search results are routed through the PII guardrails before reaching the generation prompt, so live internet context is synthesized safely
 
-### 🎯 5. Strict Anti-Hallucination & Grounded Generation
+###  5. Strict Anti-Hallucination & Grounded Generation
 - **Dual-prompt strategy** — separate specialized prompts for document RAG (`rag_prompt`) and web synthesis (`web_prompt`)
 - **Strict grounding rules** — the LLM answers only from the provided context, avoids meta-phrasing, highlights key terms in **bold**, and explicitly states when information is missing rather than guessing
 
-### 🖥️ 6. Interactive UI with Full Pipeline Observability
+###  6. Interactive UI with Full Pipeline Observability
 - **Live pipeline trace** — step cards with distinct icons, color-coded status badges, and real-time execution timers for every executed graph node
 - **Single-source context viewer** — expandable accordion showing retrieved chunks with character lengths
 - **Smart document suggestions** — on upload, the document is analyzed and **4 suggested prompt questions** are generated automatically
@@ -90,7 +90,7 @@ Each node is a distinct, traceable step visible live in the UI.
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -105,7 +105,7 @@ Each node is a distinct, traceable step visible live in the UI.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 VertexMera/
@@ -119,7 +119,7 @@ VertexMera/
 
 ---
 
-## 🔧 Local Setup
+##  Local Setup
 
 **1. Clone the repo**
 ```bash
@@ -159,7 +159,7 @@ streamlit run app.py
 
 ---
 
-## 👨‍💻 Author
+##  Author
 
 **Vaibhav Negi**
 
