@@ -1,0 +1,42 @@
+[
+  {
+    "input": "What is VertexMera and what does it do?",
+    "expected_output": "VertexMera is an AI-powered Retrieval-Augmented Generation (RAG) system designed to answer queries using document retrieval and language model generation, with PII guardrails and web search fallback.",
+    "context": []
+  },
+  {
+    "input": "How does the PII guardrail work in the pipeline?",
+    "expected_output": "The PII guardrail masks sensitive personal information in the user's query before it is processed by the retrieval and generation stages, ensuring data privacy compliance.",
+    "context": []
+  },
+  {
+    "input": "What happens when the retriever does not find relevant documents?",
+    "expected_output": "When the retriever fails to find relevant documents or the grading score falls below the confidence threshold, the pipeline falls back to a web search to retrieve up-to-date information.",
+    "context": []
+  },
+  {
+    "input": "What embedding model is used for the vector store?",
+    "expected_output": "The vector store uses the sentence-transformers/all-MiniLM-L6-v2 HuggingFace embedding model for encoding documents and queries.",
+    "context": []
+  },
+  {
+    "input": "What is the confidence threshold used for document grading?",
+    "expected_output": "The pipeline uses a confidence threshold of 0.85. If the top similarity score from the vector store exceeds this threshold, documents are accepted without further LLM-based grading.",
+    "context": []
+  },
+  {
+    "input": "Which LLM model is used to generate responses?",
+    "expected_output": "The pipeline uses the Groq-hosted openai/gpt-oss-120b model for both response generation and document grading, configured with a temperature of 0.2 for generation and 0 for grading.",
+    "context": []
+  },
+  {
+    "input": "How does the web search fallback work?",
+    "expected_output": "When the retriever does not return sufficiently relevant documents, the pipeline invokes TavilySearch to fetch results from the web, which are then used as context for the generation node.",
+    "context": []
+  },
+  {
+    "input": "What vector store is used in the pipeline?",
+    "expected_output": "The pipeline uses Pinecone as the vector store, accessed through the LangChain Pinecone integration, with the index named vertex-mera-index.",
+    "context": []
+  }
+]
