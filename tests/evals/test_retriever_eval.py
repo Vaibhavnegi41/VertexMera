@@ -16,9 +16,9 @@ import asyncio
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
-# ── Ensure project root is on sys.path ───────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -26,7 +26,6 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
-# ── DeepEval imports ──────────────────────────────────────────────────────────
 from deepeval import evaluate
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import (
@@ -35,13 +34,8 @@ from deepeval.metrics import (
     ContextualRelevancyMetric,
 )
 from deepeval.models.base_model import DeepEvalBaseLLM
-
-# ── LangChain / project imports ───────────────────────────────────────────────
+from deepeval.evaluate.configs import AsyncConfig, CacheConfig, DisplayConfig
 from langchain_groq import ChatGroq
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1.  Custom DeepEval LLM wrapper around Groq
-# ─────────────────────────────────────────────────────────────────────────────
 
 class GroqDeepEvalModel(DeepEvalBaseLLM):
     """
@@ -51,47 +45,62 @@ class GroqDeepEvalModel(DeepEvalBaseLLM):
 
     def __init__(self):
         self.model = ChatGroq(
-            model="openai/gpt-oss-120b",
+            model="qwen/qwen3.8-27b",
             api_key=os.getenv("GROQ_API_KEY", ""),
             temperature=0,
-            max_tokens=1024,
+            max_tokens=512,   # verdicts are short JSON; keep well under OTPM limit
         )
 
     def get_model_name(self) -> str:
-        return "groq/openai/gpt-oss-120b"
+        return "groq/qwen3.8-27b"
 
     def load_model(self):
         return self.model
 
     def generate(self, prompt: str) -> str:
-        response = self.model.invoke(prompt)
-        return response.content
+        """Sync generate with exponential-backoff retry on 429 rate-limit errors."""
+        from groq import RateLimitError
+        delay = 30
+        for attempt in range(5):
+            try:
+                return self.model.invoke(prompt).content
+            except RateLimitError as exc:
+                if attempt == 4:
+                    raise
+                print(f"[WARN] Rate limit hit (sync), waiting {delay}s … ({exc})")
+                time.sleep(delay)
+                delay = min(delay * 2, 60)
 
     async def a_generate(self, prompt: str) -> str:
-        response = await self.model.ainvoke(prompt)
-        return response.content
+        """Async generate with exponential-backoff retry on 429 rate-limit errors."""
+        from groq import RateLimitError
+        delay = 30
+        for attempt in range(5):
+            try:
+                response = await self.model.ainvoke(prompt)
+                return response.content
+            except RateLimitError as exc:
+                if attempt == 4:
+                    raise
+                print(f"[WARN] Rate limit hit (async), waiting {delay}s … ({exc})")
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 60)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2.  Retriever helper — calls the actual Pinecone vector store
-# ─────────────────────────────────────────────────────────────────────────────
 
 async def retrieve_contexts(query: str, k: int = 4) -> list[str]:
     """
     Uses the project's configured vector store to retrieve the top-k
     document chunks for a given query and returns their page_content strings.
     """
-    # Import lazily so heavy models are only loaded when needed
-    from backend.config import vector_store  # noqa: PLC0415
+   
+    from backend.config import vector_store  
 
     docs_with_scores = await vector_store.asimilarity_search_with_score(query, k=k)
     return [doc.page_content for doc, _score in docs_with_scores]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3.  Build test cases from the dataset JSON
-# ─────────────────────────────────────────────────────────────────────────────
 
+# Build test cases from the dataset JSON
 DATASET_PATH = Path(__file__).parent / "retriever_dataset.json"
 
 
@@ -104,16 +113,14 @@ async def build_test_cases() -> list[LLMTestCase]:
     with open(DATASET_PATH, "r", encoding="utf-8") as f:
         dataset = json.load(f)
 
-    print(f"\n📂  Loaded {len(dataset)} samples from {DATASET_PATH.name}")
-    print("🔍  Retrieving contexts from Pinecone …\n")
+    print(f"\n[INFO]  Loaded {len(dataset)} samples from {DATASET_PATH.name}")
+    print("[INFO]  Retrieving contexts from Pinecone ...\n")
 
     test_cases: list[LLMTestCase] = []
 
     for i, sample in enumerate(dataset, start=1):
         query: str = sample["input"]
         expected_output: str = sample["expected_output"]
-
-        # Pre-populated context (if any) takes priority; otherwise live retrieval
         if sample.get("context"):
             retrieved_contexts: list[str] = sample["context"]
         else:
@@ -125,7 +132,7 @@ async def build_test_cases() -> list[LLMTestCase]:
         test_cases.append(
             LLMTestCase(
                 input=query,
-                actual_output=expected_output,   # retriever eval — no generation needed
+                actual_output=expected_output,   
                 expected_output=expected_output,
                 retrieval_context=retrieved_contexts,
             )
@@ -134,9 +141,6 @@ async def build_test_cases() -> list[LLMTestCase]:
     return test_cases
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4.  Metrics
-# ─────────────────────────────────────────────────────────────────────────────
 
 def build_metrics(judge: GroqDeepEvalModel, threshold: float = 0.5):
     """
@@ -150,10 +154,6 @@ def build_metrics(judge: GroqDeepEvalModel, threshold: float = 0.5):
         ContextualRelevancyMetric(**shared_kwargs),
     ]
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 5.  Pretty-print results
-# ─────────────────────────────────────────────────────────────────────────────
 
 def print_results(test_cases: list[LLMTestCase], metrics):
     """Prints a formatted summary table of all metric scores per test case."""
@@ -173,14 +173,13 @@ def print_results(test_cases: list[LLMTestCase], metrics):
             score = metric.score if hasattr(metric, "score") else "N/A"
             passed = metric.is_successful() if hasattr(metric, "is_successful") else "?"
             reason = getattr(metric, "reason", "—")
-            status = "✅ PASS" if passed else "❌ FAIL"
+            status = "[PASS]" if passed else "[FAIL]"
             print(f"    {name:<25} score={score:.2f}   {status}")
             print(f"    {'':25} reason: {reason}")
             if isinstance(score, float):
                 overall_scores[name].append(score)
         print()
 
-    # ── Aggregate summary ──────────────────────────────────────────────────
     print(f"{'═' * 90}")
     print("  AGGREGATE SCORES")
     print(separator)
@@ -191,39 +190,48 @@ def print_results(test_cases: list[LLMTestCase], metrics):
     print(f"{'═' * 90}\n")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6.  pytest-compatible test function  (also runnable as __main__)
-# ─────────────────────────────────────────────────────────────────────────────
-
 def test_retriever_evaluation():
     """
     Entry point recognised by pytest. Builds test cases, runs deepeval's
     evaluate(), and asserts that every test case passes all metrics.
+    Evaluates one test case at a time to stay within Groq's free-tier
+    OTPM (output tokens per minute) rate limit.
     """
     judge = GroqDeepEvalModel()
     metrics = build_metrics(judge, threshold=0.5)
 
-    # Build test cases synchronously (run the async helper in an event loop)
     test_cases = asyncio.run(build_test_cases())
+    test_cases = test_cases[:3]  # cap at 3 to stay within Groq free-tier OTPM limits
 
-    print("\n🧪  Running DeepEval retriever metrics …\n")
-    results = evaluate(test_cases=test_cases, metrics=metrics)
+    print("\n[INFO]  Running DeepEval retriever metrics (sequential, 1 case at a time) ...\n")
+
+    all_test_results = []
+    for i, tc in enumerate(test_cases, start=1):
+        print(f"[INFO]  Evaluating case {i}/{len(test_cases)}: {tc.input[:60]}...")
+        result = evaluate(
+            test_cases=[tc],
+            metrics=metrics,
+            async_config=AsyncConfig(run_async=True, max_concurrent=1),  # no parallel LLM bursts
+            cache_config=CacheConfig(write_cache=True, use_cache=True),   # skip on re-runs
+            display_config=DisplayConfig(print_results=False, inspect_after_run=False),
+        )
+        all_test_results.extend(result.test_results)
+        if i < len(test_cases):
+            print(f"[INFO]  Cooling down 30s before next case...")
+            time.sleep(30)
 
     print_results(test_cases, metrics)
 
-    # Assert all test cases passed so pytest reports failures correctly
-    for tc in results.test_results:
-        for metric_result in tc.metrics_data:
+    for tc_result in all_test_results:
+        for metric_result in tc_result.metrics_data:
             assert metric_result.success, (
-                f"Metric '{metric_result.name}' FAILED for input: '{tc.input}'\n"
+                f"Metric '{metric_result.name}' FAILED for input: '{tc_result.input}'\n"
                 f"  Score  : {metric_result.score}\n"
                 f"  Reason : {metric_result.reason}"
             )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7.  Standalone execution
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
