@@ -155,38 +155,34 @@ def build_metrics(judge: GroqDeepEvalModel, threshold: float = 0.5):
     ]
 
 
-def print_results(test_cases: list[LLMTestCase], metrics):
-    """Prints a formatted summary table of all metric scores per test case."""
-    metric_names = [m.__class__.__name__.replace("Metric", "") for m in metrics]
-
+def print_results(all_test_results):
+    """Prints a formatted summary table from structured EvaluationResult data."""
     separator = "─" * 90
     print(f"\n{'═' * 90}")
     print("  RETRIEVER EVALUATION RESULTS  —  VertexMera RAG Pipeline")
     print(f"{'═' * 90}\n")
 
-    overall_scores: dict[str, list[float]] = {n: [] for n in metric_names}
+    overall_scores: dict[str, list[float]] = {}
 
-    for idx, tc in enumerate(test_cases, start=1):
-        print(f"  Test Case {idx}: {tc.input[:65]}…")
+    for idx, tc_result in enumerate(all_test_results, start=1):
+        print(f"  Test Case {idx}: {tc_result.input[:65]}...")
         print(separator)
-        for metric, name in zip(metrics, metric_names):
-            score = metric.score if hasattr(metric, "score") else "N/A"
-            passed = metric.is_successful() if hasattr(metric, "is_successful") else "?"
-            reason = getattr(metric, "reason", "—")
-            status = "[PASS]" if passed else "[FAIL]"
-            print(f"    {name:<25} score={score:.2f}   {status}")
-            print(f"    {'':25} reason: {reason}")
-            if isinstance(score, float):
-                overall_scores[name].append(score)
+        for md in tc_result.metrics_data:
+            name = md.name
+            score = md.score if md.score is not None else 0.0
+            status = "[PASS]" if md.success else "[FAIL]"
+            reason = md.reason or "—"
+            print(f"    {name:<30} score={score:.2f}   {status}")
+            print(f"    {'':30} reason: {reason}")
+            overall_scores.setdefault(name, []).append(score)
         print()
 
     print(f"{'═' * 90}")
     print("  AGGREGATE SCORES")
     print(separator)
     for name, scores in overall_scores.items():
-        if scores:
-            avg = sum(scores) / len(scores)
-            print(f"    {name:<25} avg = {avg:.3f}   (over {len(scores)} cases)")
+        avg = sum(scores) / len(scores)
+        print(f"    {name:<30} avg = {avg:.3f}   (over {len(scores)} cases)")
     print(f"{'═' * 90}\n")
 
 
@@ -211,7 +207,7 @@ def test_retriever_evaluation():
         result = evaluate(
             test_cases=[tc],
             metrics=metrics,
-            async_config=AsyncConfig(run_async=True, max_concurrent=1),  # no parallel LLM bursts
+            async_config=AsyncConfig(run_async=False),  # serialize metrics — no concurrent LLM bursts
             cache_config=CacheConfig(write_cache=True, use_cache=True),   # skip on re-runs
             display_config=DisplayConfig(print_results=False, inspect_after_run=False),
         )
@@ -220,7 +216,7 @@ def test_retriever_evaluation():
             print(f"[INFO]  Cooling down 30s before next case...")
             time.sleep(30)
 
-    print_results(test_cases, metrics)
+    print_results(all_test_results)
 
     for tc_result in all_test_results:
         for metric_result in tc_result.metrics_data:
