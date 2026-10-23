@@ -1,0 +1,37 @@
+[
+  {
+    "input": "What is VertexMera and what does it do?",
+    "context": [
+      "VertexMera is an AI-powered Retrieval-Augmented Generation (RAG) system. It answers user queries by retrieving relevant document chunks from a Pinecone vector store and then generating a response using a language model. The pipeline includes PII guardrails that mask sensitive information before retrieval, and a web search fallback when retrieved documents are not relevant enough."
+    ],
+    "expected_output": "VertexMera is an AI-powered RAG system that answers queries by retrieving relevant documents from a vector store and generating responses using an LLM, with PII guardrails and a web search fallback."
+  },
+  {
+    "input": "How does the PII guardrail work in the pipeline?",
+    "context": [
+      "The PII guardrail node runs at the start of the pipeline. It uses a guardrail library to detect and mask personally identifiable information (PII) in the user's query. The masked text is stored so downstream nodes (retrieval, grading, generation) operate on anonymised input, protecting user privacy."
+    ],
+    "expected_output": "The PII guardrail masks sensitive personal information in the user query before it reaches the retrieval and generation stages, ensuring privacy compliance throughout the pipeline."
+  },
+  {
+    "input": "What happens when the retriever does not find relevant documents?",
+    "context": [
+      "When the document grading step determines that no retrieved chunks are relevant (or the top similarity score is below the confidence threshold of 0.85), the pipeline sets the search flag to True and falls back to a TavilySearch web search. The web results are then used as context for the generation node instead of the Pinecone documents."
+    ],
+    "expected_output": "When no relevant documents are found, the pipeline falls back to a TavilySearch web search and uses those results as context for generating the answer."
+  },
+  {
+    "input": "What is the confidence threshold used for document grading?",
+    "context": [
+      "The pipeline defines a CONFIDENCE_THRESHOLD of 0.85. After retrieving the top-k documents from Pinecone, it checks the highest similarity score. If that score is at or above 0.85, the documents are accepted directly without further LLM-based grading, saving latency and API calls."
+    ],
+    "expected_output": "The confidence threshold is 0.85. If the top similarity score from Pinecone meets or exceeds this value, documents are accepted without additional LLM grading."
+  },
+  {
+    "input": "Which LLM model is used to generate responses?",
+    "context": [
+      "The generation and grading nodes both use the Groq-hosted openai/gpt-oss-120b model via the ChatGroq integration. The generation model is configured with temperature=0.2 and max_tokens=1024, while the grading model uses temperature=0 and max_tokens=300 for deterministic scoring."
+    ],
+    "expected_output": "The pipeline uses the Groq-hosted openai/gpt-oss-120b model for response generation (temperature=0.2) and document grading (temperature=0)."
+  }
+]

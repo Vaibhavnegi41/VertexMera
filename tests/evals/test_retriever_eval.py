@@ -40,7 +40,7 @@ from langchain_groq import ChatGroq
 class GroqDeepEvalModel(DeepEvalBaseLLM):
     """
     Wraps the project's ChatGroq instance so DeepEval can use it as its
-    LLM judge without needing an OpenAI key.
+    LLM judge 
     """
 
     def __init__(self):
@@ -48,7 +48,7 @@ class GroqDeepEvalModel(DeepEvalBaseLLM):
             model="qwen/qwen3.8-27b",
             api_key=os.getenv("GROQ_API_KEY", ""),
             temperature=0,
-            max_tokens=512,   # verdicts are short JSON; keep well under OTPM limit
+            max_tokens=512,  
         )
 
     def get_model_name(self) -> str:
