@@ -1,6 +1,9 @@
 import re
+import logging
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class PIIEntity:
@@ -19,7 +22,7 @@ class PIIResult:
 
 PATTERNS: List[Tuple[str, re.Pattern]] = [
     ("EMAIL", re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b", re.IGNORECASE)),
-    ("PHONE", re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s\-.]?)?(?:\(?\d{2,4}\)?[\s\-.]?)\d{3,4}[\s\-.]?\d{3,4}(?!\w)")),
+    ("PHONE", re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s\-.]?)?(?:\(?\d{2,4}\)?[\s\-.]?)\d{3,4}[\s\-.]?\d{3,4}(?!\w)", re.ASCII)),  # min-len guard applied in mask()
     ("SSN", re.compile(r"\b(?!000|666|9\d{2})\d{3}[\s\-]?(?!00)\d{2}[\s\-]?(?!0000)\d{4}\b")),
     ("CREDIT_CARD", re.compile(r"\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2})|35\d{2})[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{3,4}\b")),
     ("IP_ADDRESS", re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b")),
@@ -79,14 +82,15 @@ class PIIGuardrails:
 
         entities: List[PIIEntity] = []
 
-        # 1. Deterministic Pass (Regex)
         for entity_type, pattern in PATTERNS:
             for match in pattern.finditer(text):
                 val = match.group().strip()
-                if len(val) >= 3:
+                # PHONE needs a stricter minimum length to avoid matching years/IDs
+                min_len = 7 if entity_type == "PHONE" else 3
+                if len(val) >= min_len:
                     entities.append(PIIEntity(entity_type, match.start(), match.end(), val, 1.0))
 
-        # 2. Model-Based Pass (Fast NER)
+
         if self.enable_model:
             nlp = get_nlp_model()
             if nlp:
@@ -97,8 +101,8 @@ class PIIGuardrails:
                             val = ent.text.strip()
                             if len(val) >= 2 and val.lower() not in EXCLUDED_WORDS:
                                 entities.append(PIIEntity(SPACY_LABELS[ent.label_], ent.start_char, ent.end_char, val, 0.85))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("[PIIGuardrails] spaCy NER pass failed: %s", exc, exc_info=False)
 
         entities.sort(key=lambda e: (e.start, -(e.end - e.start)))
         merged: List[PIIEntity] = []
@@ -106,7 +110,7 @@ class PIIGuardrails:
             if not merged or ent.start >= merged[-1].end:
                 merged.append(ent)
 
-        # 4. Mask right-to-left
+
         masked = text
         applied_map = {}
         for ent in sorted(merged, key=lambda e: e.start, reverse=True):
@@ -121,25 +125,43 @@ class PIIGuardrails:
         return dict(self._pii_map)
 
 
+
 _guard = None
 
 def get_guardrails() -> PIIGuardrails:
+    """Return the module-level singleton (safe for single-user / warm-up use)."""
     global _guard
     if _guard is None:
         _guard = PIIGuardrails()
     return _guard
 
+
+
+_session_guards: Dict[str, PIIGuardrails] = {}
+
+def get_session_guardrails(session_id: str) -> PIIGuardrails:
+    """Return a PIIGuardrails instance scoped to a specific session/user."""
+    if session_id not in _session_guards:
+        _session_guards[session_id] = PIIGuardrails()
+    return _session_guards[session_id]
+
+
+def clear_session_guardrails(session_id: str) -> None:
+    """Release PII state for a session (call on conversation end / logout)."""
+    _session_guards.pop(session_id, None)
+
+
 def mask_text(text: str) -> str:
-    """Mask PII in a single string."""
+    """Mask PII in a single string using the global singleton."""
     return get_guardrails().mask(text).masked_text
 
+
 def mask_documents(docs: list) -> list:
-    """Mask PII in a list of Document objects in-place."""
+    """Mask PII in a list of LangChain Document objects in-place."""
     guard = get_guardrails()
     for doc in docs:
         if hasattr(doc, "page_content"):
             doc.page_content = guard.mask(doc.page_content).masked_text
             if hasattr(doc, "metadata") and isinstance(doc.metadata, dict):
                 doc.metadata["pii_redacted"] = True
-    return docs
     return docs

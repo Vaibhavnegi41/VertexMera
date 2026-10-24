@@ -122,6 +122,33 @@ def run_async(coro):
     return asyncio.run(coro)
 
 
+def run_stream(async_gen_factory):
+    """Run an async generator in a sync context, yielding items one by one."""
+    import concurrent.futures, queue as _queue
+
+    q: _queue.Queue = _queue.Queue()
+    DONE = object()
+
+    async def _drain():
+        try:
+            async for item in async_gen_factory():
+                q.put(item)
+        finally:
+            q.put(DONE)
+
+    def _worker():
+        asyncio.run(_drain())
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(_worker)
+        while True:
+            item = q.get()
+            if item is DONE:
+                break
+            yield item
+        fut.result()  # re-raise any exception from the thread
+
+
 embedding_model = get_embedding_model()
 chatbot = load_chatbot()
 
@@ -978,7 +1005,6 @@ if st.session_state.messages:
     st.markdown(full_chat_html, unsafe_allow_html=True)
 
     # ── HITL (HUMAN-IN-THE-LOOP) ACTION BUTTON ──
-    # Rendered directly beneath the assistant message with matching width & styling
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
         latest_msg = st.session_state.messages[-1]
         if latest_msg.get("web_searched") and not latest_msg.get("is_detailed"):
@@ -1045,66 +1071,126 @@ if pending:
 elif submit_btn and query_input and query_input.strip():
     active_query = query_input.strip()
 
-# Pipeline Execution
+# Pipeline Execution — streaming
 if active_query:
     st.session_state.messages.append({
         "role": "user",
         "content": active_query
     })
 
-    with st.spinner("Running CRAG pipeline..."):
-        try:
-            start_time = time.time()
-            config = {"configurable": {"thread_id": st.session_state.thread_id}}
+    try:
+        start_time = time.time()
+        config = {"configurable": {"thread_id": st.session_state.thread_id}}
+        input_payload = {
+            "question":     active_query,
+            "thread_id":    st.session_state.thread_id,
+            "documents":    [],
+            "steps":        [],
+            "generation":   "",
+            "web_searched": False,
+            "pii_map":      {},
+            "pii_redacted": False,
+        }
 
-            results = run_async(chatbot.ainvoke({
-                'question': active_query,
-                'documents': [],
-                'steps': [],
-                'generation': '',
-                'web_searched': False,
-                'pii_map': {},
-                'pii_redacted': False
-            }, config=config))
+        # ── Status + streaming placeholder ──────────────────────────────────
+        status_ph = st.empty()
+        bubble_ph = st.empty()
 
+        streamed_tokens: list[str] = []
+        final_state:     dict      = {}
+        in_generate_node             = False
+        pipeline_done                = False
 
-            elapsed = round(time.time() - start_time, 2)
+        status_ph.markdown(
+            '<div style="color:#a1a1aa;font-size:0.85rem;padding:6px 0">'
+            'Running CRAG pipeline…</div>',
+            unsafe_allow_html=True
+        )
 
-            generation = results.get("generation", "No response generated.")
-            raw_steps = results.get("steps", [])
-            steps = extract_latest_turn_steps(raw_steps)
-            web_searched = results.get("web_searched", False)
-            raw_docs = results.get("documents", [])
+        async def _event_stream():
+            async for ev in chatbot.astream_events(
+                input_payload, config=config, version="v2"
+            ):
+                yield ev
 
-            # Extract document strings for display
-            doc_strings = []
-            for d in raw_docs:
-                if hasattr(d, "page_content"):
-                    doc_strings.append(d.page_content)
-                elif isinstance(d, dict) and "page_content" in d:
-                    doc_strings.append(d["page_content"])
-                elif isinstance(d, str):
-                    doc_strings.append(d)
+        for event in run_stream(_event_stream):
+            kind = event.get("event", "")
+            name = event.get("name", "")
 
-            st.session_state.latest_docs = doc_strings
+            # ── Detect entry into the generate (or detailed-web) node ──────
+            if kind == "on_chain_start" and name in ("generate", "generate_detailed_web_node"):
+                in_generate_node = True
+                status_ph.markdown(
+                    '<div style="color:#a1a1aa;font-size:0.85rem;padding:6px 0">'
+                    ' Generating answer…</div>',
+                    unsafe_allow_html=True
+                )
 
-            # Add assistant message
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": generation,
-                "steps": steps,
-                "web_searched": web_searched,
-                "time": elapsed,
-                "docs": doc_strings
-            })
+            # ── Stream tokens from the LLM while inside the generate node ──
+            elif kind == "on_chat_model_stream" and in_generate_node:
+                chunk = event.get("data", {}).get("chunk")
+                token = ""
+                if chunk is not None:
+                    if hasattr(chunk, "content"):
+                        token = chunk.content or ""
+                    elif isinstance(chunk, str):
+                        token = chunk
+                if token:
+                    streamed_tokens.append(token)
+                    partial = "".join(streamed_tokens)
+                    bubble_ph.markdown(
+                        f'<div class="chat-bubble assistant" style="margin-top:8px">'
+                        f'<div class="chat-role ai-role">VertexMera</div>'
+                        f'<div class="chat-content-body">{format_markdown_to_html(partial)}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
 
-            sync_current_conversation(active_query)
-            st.rerun()
+            # ── Capture final graph output from the last on_chain_end ──────
+            elif kind == "on_chain_end" and name in ("LangGraph", "generate", "generate_detailed_web_node"):
+                output = event.get("data", {}).get("output") or {}
+                if isinstance(output, dict) and (output.get("generation") or output.get("steps")):
+                    final_state = output
 
-        except Exception as e:
-            st.error(f"Pipeline error: {str(e)}")
-            if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-                st.session_state.messages.pop()
+        # ── Tear down transient UI elements ────────────────────────────────
+        status_ph.empty()
+        bubble_ph.empty()
+
+        elapsed = round(time.time() - start_time, 2)
+
+        generation  = "".join(streamed_tokens) or final_state.get("generation", "No response generated.")
+        raw_steps   = final_state.get("steps", [])
+        steps       = extract_latest_turn_steps(raw_steps)
+        web_searched = final_state.get("web_searched", False)
+        raw_docs    = final_state.get("documents", [])
+
+        doc_strings = []
+        for d in raw_docs:
+            if hasattr(d, "page_content"):
+                doc_strings.append(d.page_content)
+            elif isinstance(d, dict) and "page_content" in d:
+                doc_strings.append(d["page_content"])
+            elif isinstance(d, str):
+                doc_strings.append(d)
+
+        st.session_state.latest_docs = doc_strings
+
+        st.session_state.messages.append({
+            "role":        "assistant",
+            "content":     generation,
+            "steps":       steps,
+            "web_searched": web_searched,
+            "time":        elapsed,
+            "docs":        doc_strings
+        })
+
+        sync_current_conversation(active_query)
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Pipeline error: {str(e)}")
+        if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+            st.session_state.messages.pop()
 
 elif submit_btn and not query_input.strip():
     st.warning("Please enter a question first.")

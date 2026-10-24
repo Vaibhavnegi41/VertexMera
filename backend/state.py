@@ -11,6 +11,7 @@ def reduce_steps(current: Optional[List[str]], update: Optional[List[str]]) -> L
 
 
 class State(TypedDict, total=False):
+    thread_id: str         
     raw_question: str
     question: str
     documents: List[Document]

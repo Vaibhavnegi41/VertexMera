@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from backend.state import State
 from backend.config import model, grading_model, vector_store, web_search_tool
 from backend.prompts import scoring_prompt, rag_prompt, web_prompt, web_detailed_prompt
-from backend.pii_guardrails import get_guardrails, mask_documents
+from backend.pii_guardrails import get_guardrails, get_session_guardrails, mask_documents
 from backend.intent_router import should_web_search_directly
 
 CONFIDENCE_THRESHOLD = 0.85
@@ -23,7 +23,9 @@ score_model = grading_model.with_structured_output(ScoreFormat)
 async def pii_guardrail_node(state: State):
     question = state.get("question", "")
 
-    guard = get_guardrails()
+    # Use per-session guard keyed by thread_id to prevent cross-user PII bleed.
+    thread_id: str = state.get("thread_id") or "__global__"
+    guard = get_session_guardrails(thread_id)
     res = await asyncio.to_thread(guard.mask, question)
 
     messages = state.get("messages", [])
