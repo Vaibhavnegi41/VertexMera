@@ -13,6 +13,7 @@ from backend.nodes import (
     generate_node,
     web_search,
     route_after_pii,
+    route_after_retrieve,
     route_decision,
     generate_detailed_web_node,
 )
@@ -59,7 +60,10 @@ def build_graph(checkpointer=None):
         "web_search": "web_search",
         "retrieve": "retrieve"
     })
-    graph.add_edge("retrieve", "grading")
+    graph.add_conditional_edges("retrieve", route_after_retrieve, {
+        "web_search": "web_search",
+        "grading": "grading"
+    })
     graph.add_conditional_edges("grading", route_decision, {
         "web_search": "web_search",
         "generate": "generate"

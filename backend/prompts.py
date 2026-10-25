@@ -30,6 +30,28 @@ scoring_prompt = ChatPromptTemplate.from_messages([
 ])
 
 
+multi_doc_scoring_prompt = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        "You are a strict, high-precision relevance grader for a Retrieval-Augmented Generation (RAG) pipeline.\n\n"
+        "## Task\n"
+        "You will be given a user QUESTION and candidate DOCUMENTS, each prefixed with [Doc <index>].\n"
+        "Evaluate each document to determine whether it contains substantive facts, definitions, policies, or context "
+        "that contribute toward answering the user's question (even partially).\n\n"
+        "## Grading Criteria\n"
+        "- Mark relevant if the document directly addresses the core entity, question, or facts requested.\n"
+        "- Mark irrelevant if the document is off-topic, only shares superficial keywords, or lacks actionable context.\n\n"
+        "## Output\n"
+        "Return the list of integer indices (e.g. [0, 2]) for all relevant documents.\n"
+        "If none of the documents are relevant, return an empty list: []."
+    ),
+    (
+        "human",
+        "QUESTION:\n{question}\n\nCANDIDATE DOCUMENTS:\n{documents}"
+    )
+])
+
+
 rag_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -76,15 +98,12 @@ web_prompt = ChatPromptTemplate.from_messages([
         "3. Do not fabricate facts beyond what the results support. "
         "If results are insufficient, say so.\n\n"
         "## Formatting\n"
-        "- Provide simple, clear, word-based explanations using natural conversational language and clean markdown.\n"
+        "- Provide a crisp, direct summary in approximately 4-5 lines or short bullet points.\n"
+        "- Focus strictly on the exact answer to the user's question without introductory fluff.\n"
         "- Never output raw HTML tags (e.g. <div>, <span>, <br>, <p>, etc.).\n"
         "- Do NOT output code blocks unless the user explicitly requested code.\n"
-        "- Use bullet points or numbered lists when listing multiple items.\n"
         "- Bold key terms on first mention for scannability.\n"
-        "- Keep answers concise — aim for 3-6 sentences unless the "
-        "question requires deeper elaboration.\n"
-        "- Do not start with 'Based on the search results...' or "
-        "similar meta-phrasing. Answer directly."
+        "- Do not start with 'Based on the search results...' or similar meta-phrasing. Answer directly."
     ),
     MessagesPlaceholder(variable_name="chat_history", optional=True),
     (
