@@ -24,3 +24,11 @@ class State(TypedDict, total=False):
     detail_requested: bool
     is_detailed: bool
     messages: Annotated[List[BaseMessage], add_messages]
+    # Output guardrails fields
+    safety_passed: bool
+    safety_violation: Optional[str]
+    faithfulness_passed: bool
+    faithfulness_score: Optional[float]
+    hallucination_retry_count: int
+    output_pii_detected: bool
+

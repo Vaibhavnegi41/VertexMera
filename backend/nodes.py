@@ -9,6 +9,7 @@ from backend.config import model, grading_model, vector_store, web_search_tool
 from backend.prompts import scoring_prompt, multi_doc_scoring_prompt, rag_prompt, web_prompt, web_detailed_prompt
 from backend.pii_guardrails import get_guardrails, get_session_guardrails, mask_documents
 from backend.intent_router import should_web_search_directly
+from backend.output_guardrails import apply_output_guardrails
 
 CONFIDENCE_THRESHOLD = 0.85
 RETRIEVAL_SCORE_THRESHOLD = 0.70
@@ -141,13 +142,10 @@ async def generate_node(state: State):
         )
     )
 
-    ai_msg = AIMessage(content=generation.content)
-
     return {
         "generation": generation.content,
         "steps": ["generation_node"],
         "is_detailed": state.get("detail_requested", False),
-        "messages": [ai_msg]
     }
 
 
@@ -171,17 +169,41 @@ async def generate_detailed_web_node(state: State):
         )
     )
 
-    ai_msg = AIMessage(content=generation.content)
+    guard_res = await apply_output_guardrails({
+        **state,
+        "generation": generation.content,
+    })
+    final_content = guard_res["generation"]
+    ai_msg = AIMessage(content=final_content)
 
     return {
-        "generation": generation.content,
-        "steps": ["detailed_web_generation_node"],
+        "generation": final_content,
+        "steps": ["detailed_web_generation_node", "output_guardrail_node"],
         "web_searched": True,
         "is_detailed": True,
         "detail_requested": True,
         "documents": documents,
-        "messages": [ai_msg]
+        "messages": [ai_msg],
+        "safety_passed": guard_res.get("safety_passed", True),
+        "safety_violation": guard_res.get("safety_violation"),
+        "faithfulness_passed": guard_res.get("faithfulness_passed", True),
+        "faithfulness_score": guard_res.get("faithfulness_score"),
+        "output_pii_detected": guard_res.get("output_pii_detected", False),
     }
+
+
+async def output_guardrail_node(state: State):
+    res = await apply_output_guardrails(state)
+    updates = dict(res)
+    is_routing_web = (
+        not updates.get("faithfulness_passed", True)
+        and not state.get("web_searched", False)
+        and updates.get("hallucination_retry_count", 0) <= 1
+        and updates.get("safety_passed", True)
+    )
+    if not is_routing_web:
+        updates["messages"] = [AIMessage(content=updates["generation"])]
+    return updates
 
 
 async def web_search(state: State):
@@ -226,3 +248,14 @@ def route_decision(state: State) -> Literal["web_search", "generate"]:
     if state.get("search", False):
         return "web_search"
     return "generate"
+
+
+def route_after_output_guardrail(state: State) -> Literal["web_search", "end"]:
+    if (
+        not state.get("faithfulness_passed", True)
+        and not state.get("web_searched", False)
+        and state.get("hallucination_retry_count", 0) <= 1
+        and state.get("safety_passed", True)
+    ):
+        return "web_search"
+    return "end"

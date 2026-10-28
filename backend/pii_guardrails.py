@@ -67,13 +67,16 @@ class PIIGuardrails:
     def __init__(self, enable_model: bool = True):
         self.enable_model = enable_model
         self._pii_map: Dict[str, str] = {}
+        self._reverse_map: Dict[str, str] = {}
         self._counters: Dict[str, int] = {}
 
     def _get_placeholder(self, entity_type: str, original: str) -> str:
         key = f"{entity_type}::{original.lower().strip()}"
         if key not in self._pii_map:
             self._counters[entity_type] = self._counters.get(entity_type, 0) + 1
-            self._pii_map[key] = f"[{entity_type}_{self._counters[entity_type]}]"
+            placeholder = f"[{entity_type}_{self._counters[entity_type]}]"
+            self._pii_map[key] = placeholder
+            self._reverse_map[placeholder] = original
         return self._pii_map[key]
 
     def mask(self, text: str) -> PIIResult:
@@ -124,6 +127,46 @@ class PIIGuardrails:
     def pii_map(self) -> Dict[str, str]:
         return dict(self._pii_map)
 
+    @property
+    def reverse_pii_map(self) -> Dict[str, str]:
+        return dict(self._reverse_map)
+
+    def unmask(self, text: str, extra_map: Optional[Dict[str, str]] = None) -> str:
+        """Replace placeholders [ENTITY_N] with original user values."""
+        if not text:
+            return ""
+
+        mapping = dict(self._reverse_map)
+        if extra_map:
+            for k, v in extra_map.items():
+                if k.startswith("[") and k.endswith("]"):
+                    mapping[k] = v
+                elif v.startswith("[") and v.endswith("]"):
+                    val = k.split("::", 1)[1] if "::" in k else k
+                    mapping[v] = val
+
+        result = text
+        for placeholder, original in mapping.items():
+            result = result.replace(placeholder, original)
+        return result
+
+    def scrub_sensitive_output(self, text: str) -> Tuple[str, bool]:
+        """Scrub high-risk leaked sensitive PII (secret keys, credentials, credit cards, SSNs, etc.)."""
+        if not text:
+            return text or "", False
+
+        scrubbed = text
+        detected = False
+        HIGH_RISK = {"SECRET_KEY", "CREDIT_CARD", "SSN", "AADHAAR", "PAN", "PASSPORT"}
+        for entity_type, pattern in PATTERNS:
+            if entity_type in HIGH_RISK:
+                for match in pattern.finditer(text):
+                    val = match.group().strip()
+                    if len(val) >= 4:
+                        scrubbed = scrubbed.replace(val, f"[REDACTED_{entity_type}]")
+                        detected = True
+        return scrubbed, detected
+
 
 
 _guard = None
@@ -165,3 +208,11 @@ def mask_documents(docs: list) -> list:
             if hasattr(doc, "metadata") and isinstance(doc.metadata, dict):
                 doc.metadata["pii_redacted"] = True
     return docs
+
+
+def unmask_text(text: str, extra_map: Optional[Dict[str, str]] = None, session_id: Optional[str] = None) -> str:
+    """Unmask placeholders in a string using session-specific or global PII mapping."""
+    if session_id:
+        return get_session_guardrails(session_id).unmask(text, extra_map)
+    return get_guardrails().unmask(text, extra_map)
+

@@ -12,9 +12,11 @@ from backend.nodes import (
     grade_documents,
     generate_node,
     web_search,
+    output_guardrail_node,
     route_after_pii,
     route_after_retrieve,
     route_decision,
+    route_after_output_guardrail,
     generate_detailed_web_node,
 )
 
@@ -54,6 +56,7 @@ def build_graph(checkpointer=None):
     graph.add_node("grading", grade_documents)
     graph.add_node("web_search", web_search)
     graph.add_node("generate", generate_node)
+    graph.add_node("output_guardrail", output_guardrail_node)
 
     graph.add_edge(START, "pii_guardrail")
     graph.add_conditional_edges("pii_guardrail", route_after_pii, {
@@ -69,7 +72,11 @@ def build_graph(checkpointer=None):
         "generate": "generate"
     })
     graph.add_edge("web_search", "generate")
-    graph.add_edge("generate", END)
+    graph.add_edge("generate", "output_guardrail")
+    graph.add_conditional_edges("output_guardrail", route_after_output_guardrail, {
+        "web_search": "web_search",
+        "end": END
+    })
 
     if checkpointer is None:
         checkpointer = MemorySaver()
@@ -85,4 +92,5 @@ async def build_graph_async():
 
 
 chatbot = build_graph()
-__all__ = ["chatbot", "build_graph", "build_graph_async", "get_async_checkpointer", "generate_detailed_web_node"]
+__all__ = ["chatbot", "build_graph", "build_graph_async", "get_async_checkpointer", "generate_detailed_web_node", "output_guardrail_node"]
+

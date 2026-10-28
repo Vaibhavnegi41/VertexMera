@@ -82,6 +82,8 @@ def load_chatbot():
     importlib.reload(backend.intent_router)
     import backend.state
     importlib.reload(backend.state)
+    import backend.output_guardrails
+    importlib.reload(backend.output_guardrails)
     import backend.nodes
     importlib.reload(backend.nodes)
     import backend.graph
@@ -1147,7 +1149,7 @@ if active_query:
                     )
 
             # ── Capture final graph output from the last on_chain_end ──────
-            elif kind == "on_chain_end" and name in ("LangGraph", "generate", "generate_detailed_web_node"):
+            elif kind == "on_chain_end" and name in ("LangGraph", "output_guardrail", "generate", "generate_detailed_web_node"):
                 output = event.get("data", {}).get("output") or {}
                 if isinstance(output, dict) and (output.get("generation") or output.get("steps")):
                     final_state = output
@@ -1158,7 +1160,7 @@ if active_query:
 
         elapsed = round(time.time() - start_time, 2)
 
-        generation  = "".join(streamed_tokens) or final_state.get("generation", "No response generated.")
+        generation  = final_state.get("generation") or "".join(streamed_tokens) or "No response generated."
         raw_steps   = final_state.get("steps", [])
         steps       = extract_latest_turn_steps(raw_steps)
         web_searched = final_state.get("web_searched", False)
@@ -1206,13 +1208,14 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
 
         steps_html = ""
         step_meta = {
-            "guardrail":  ("guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
-            "pii":        ("guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
-            "retrieval":  ("retrieve",  "Queried Pinecone vector store"),
-            "grade":      ("grade",     "Scored document relevance"),
-            "search":     ("search",    "Fell back to Tavily web search"),
-            "detailed":   ("detailed",  "Synthesized comprehensive deep-dive explanation (HITL)"),
-            "generation": ("generate",  "Generated final answer"),
+            "output_guardrail": ("guardrail", "Applied Output Guardrails (PII De-anonymization, Faithfulness & Safety)"),
+            "guardrail":        ("guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "pii":              ("guardrail", "Applied Hybrid PII Redaction Guardrail (Deterministic + Semantic NER)"),
+            "retrieval":        ("retrieve",  "Queried Pinecone vector store"),
+            "grade":            ("grade",     "Scored document relevance"),
+            "search":           ("search",    "Fell back to Tavily web search"),
+            "detailed":         ("detailed",  "Synthesized comprehensive deep-dive explanation (HITL)"),
+            "generation":       ("generate",  "Generated candidate response"),
         }
 
         trace_steps = extract_latest_turn_steps(last_msg["steps"])
