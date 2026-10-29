@@ -23,6 +23,29 @@ from backend.nodes import (
 _checkpointer = None
 _pool = None
 
+async def async_checkpointer():
+    global _checkpointer, _pool
+    if _checkpointer is not None:
+        return _checkpointer
+
+    try:
+        connection_kwargs = {
+            "autocommit": True,
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
+        }
+        _pool = AsyncConnectionPool(
+            conninfo=POSTGRES_URI,
+            max_size=10,
+            kwargs=connection_kwargs,
+        )
+        _checkpointer = AsyncPostgresSaver(_pool)
+        await _checkpointer.setup()
+        return _checkpointer
+    except Exception as e:
+        print(f"[Warning] Could not initialize AsyncPostgresSaver at {POSTGRES_URI}: {e}")
+        return None
+
 
 async def get_async_checkpointer():
     global _checkpointer, _pool
